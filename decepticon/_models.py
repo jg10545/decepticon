@@ -229,14 +229,18 @@ class ClassificationHead(tf.keras.Model):
     
     def __init__(self, target_classes=1, downsample=1):
         super(ClassificationHead, self).__init__()
-        
+        # note- same padding is important here; otherwise for small
+        # images the FCN downsampling can lead to negative dimensions
+        # in this network
         self._layers = [
             
-            tf.keras.layers.Conv2D(int(512/downsample), kernel_size=3),
+            tf.keras.layers.Conv2D(int(512/downsample), kernel_size=3,
+                                   padding="same"),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(0.1),
             
-            tf.keras.layers.Conv2D(int(512/downsample), kernel_size=3),
+            tf.keras.layers.Conv2D(int(512/downsample), kernel_size=3,
+                                   padding="same"),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(0.1),
             
@@ -260,14 +264,19 @@ def build_classifier(fcn=None, target_classes=1, downsample=1):
         VGG19 pretrained on ImageNet
     :target_classes: number of object classes
     :downsample: factor to downsample kernels by
+    :fcn_trainable:
     """
     if fcn is None:
         fcn = tf.keras.applications.VGG19(weights="imagenet", 
                                           include_top=False)
+
     head = ClassificationHead(target_classes, downsample)
     
     inpt = tf.keras.layers.Input((None, None, 3))
     net = fcn(inpt)
+    #net = tf.keras.layers.GlobalMaxPool2D()(net)
+    #net = tf.keras.layers.Dense(target_classes+1, 
+    #                            activation=tf.keras.activations.softmax)(net)
     net = head(net)
     
     return tf.keras.Model(inpt, net)
@@ -292,3 +301,62 @@ def build_mask_generator(fcn=None, target_classes=1, downsample=1):
     net = head(net)
     
     return tf.keras.Model(inpt, net)
+
+
+
+class LocalDiscriminator(tf.keras.Model):
+    """
+    I'm not sure whether this is exactly the modified patchGAN
+    used in Shetty et al- the supplementary material doesn't specify
+    and the code has several versions.
+    
+    :downsample: reduce the number of kernels in each layer
+        by this factor
+    """
+    
+    def __init__(self, downsample=1):
+        super(LocalDiscriminator, self).__init__()
+        
+        
+        self._layers = [
+            # 128 -> 64
+            tf.keras.layers.Conv2D(int(64/downsample), kernel_size=4,
+                                  strides=2, padding="same"),
+            tf.keras.layers.LeakyReLU(0.2),
+            # 64 -> 32
+            tf.keras.layers.Conv2D(int(128/downsample), kernel_size=4,
+                                  strides=2, padding="same"),
+            tf.keras.layers.LeakyReLU(0.2),
+            # 32 -> 16
+            tf.keras.layers.Conv2D(int(256/downsample), kernel_size=4,
+                                  strides=2, padding="same"),
+            tf.keras.layers.LeakyReLU(0.2),
+            
+            # 16 -> 32
+            tf.keras.layers.Conv2DTranspose(int(256/downsample),
+                                           kernel_size=4,
+                                           strides=2,
+                                           padding="same"),
+            tf.keras.layers.LeakyReLU(0.2),
+            # 32 -> 64
+            tf.keras.layers.Conv2DTranspose(int(128/downsample),
+                                           kernel_size=4,
+                                           strides=2,
+                                           padding="same"),
+            tf.keras.layers.LeakyReLU(0.2),
+            # 64 -> 128
+            tf.keras.layers.Conv2DTranspose(int(64/downsample),
+                                           kernel_size=4,
+                                           strides=2,
+                                           padding="same"),
+            tf.keras.layers.LeakyReLU(0.2),
+            tf.keras.layers.Conv2D(1, kernel_size=7,
+                                  padding="same",
+                                  activation=tf.keras.activations.sigmoid)
+        ]
+
+    def call(self, inputs):
+        net = inputs
+        for l in self._layers:
+            net = l(net)
+        return net
