@@ -11,7 +11,17 @@ import tensorflow as tf
 
 from decepticon._layers import InstanceNormalizationLayer
 
-
+def _compose(net, model, trainable=True):
+    """
+    Hack for keras isue #10074
+    """
+    for l in model.layers:
+        # don't chain together input layers, since that causes
+        # some problems later
+        if not isinstance(l, tf.keras.layers.InputLayer):
+            net = l(net)
+            l.trainable = trainable
+    return net
 
 class ResidualBlock(tf.keras.Model):
     """
@@ -209,11 +219,18 @@ def build_inpainter(downsample=1):
     upsampler = InpainterUpsampler(downsample=downsample)
     
     inpt = tf.keras.layers.Input((None, None, 3))
-    net = downsampler(inpt)
-    net = bottleneck(net)
-    net = upsampler(net)
-    
-    return tf.keras.Model(inpt, net)  
+    #net = downsampler(inpt)
+    #net = bottleneck(net)
+    #net = upsampler(net)
+    net = _compose(inpt, downsampler)
+    net = _compose(net, bottleneck)
+    net = _compose(net, upsampler)
+    #return tf.keras.Model(inpt, net) 
+    model = tf.keras.Model(inpt, net)
+    for l in model.layers:
+        l._name = "inpainter_" + l.name
+    return model
+
 
 
 
@@ -271,15 +288,16 @@ def build_classifier(fcn=None, target_classes=1, downsample=1):
                                           include_top=False)
 
     head = ClassificationHead(target_classes, downsample)
-    
     inpt = tf.keras.layers.Input((None, None, 3))
-    net = fcn(inpt)
-    #net = tf.keras.layers.GlobalMaxPool2D()(net)
-    #net = tf.keras.layers.Dense(target_classes+1, 
-    #                            activation=tf.keras.activations.softmax)(net)
-    net = head(net)
-    
-    return tf.keras.Model(inpt, net)
+    net = _compose(inpt, fcn)
+    net = _compose(net, head)
+   
+    #return tf.keras.Model(inpt, net)
+    model = tf.keras.Model(inpt, net)
+    for l in model.layers:
+        l._name = "classifier_" + l.name
+    return model
+
 
 
 def build_mask_generator(fcn=None, target_classes=1, downsample=1):
@@ -297,10 +315,16 @@ def build_mask_generator(fcn=None, target_classes=1, downsample=1):
     head = MaskGeneratorHead(target_classes, downsample)
     
     inpt = tf.keras.layers.Input((None, None, 3))
-    net = fcn(inpt)
-    net = head(net)
+    #net = fcn(inpt)
+    #net = head(net)
+    net = _compose(inpt, fcn)
+    net = _compose(net, head)
     
-    return tf.keras.Model(inpt, net)
+    #return tf.keras.Model(inpt, net)
+    model = tf.keras.Model(inpt, net)
+    for l in model.layers:
+        l._name = "maskgen_" + l.name
+    return model
 
 
 
@@ -360,3 +384,20 @@ class LocalDiscriminator(tf.keras.Model):
         for l in self._layers:
             net = l(net)
         return net
+    
+    
+def build_discriminator(downsample=1):
+    """
+    Build the real/fake discriminator
+    
+    """
+    
+    inpt = tf.keras.layers.Input((None, None, 3))
+    disc = LocalDiscriminator(downsample)
+    net = _compose(inpt, disc)
+    
+    #return tf.keras.Model(inpt, net)
+    model = tf.keras.Model(inpt, net)
+    for l in model.layers:
+        l._name = "discriminator_" + l.name
+    return model

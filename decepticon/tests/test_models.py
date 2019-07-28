@@ -10,6 +10,7 @@ from decepticon._models import build_inpainter
 from decepticon._models import build_classifier
 from decepticon._models import build_mask_generator
 from decepticon._models import LocalDiscriminator
+from decepticon._models import build_discriminator
 
 
 def test_ResidualBlock_output_shape():
@@ -88,6 +89,11 @@ def test_local_discriminator_input_output_shapes():
     assert outshape[:3] == inshape[:3]
     assert inshape[-1] == 3
     assert outshape[-1] == 1
+    
+    
+def test_build_discriminator():
+    pass
+    #assert False
 
 
 

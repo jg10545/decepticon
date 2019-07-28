@@ -7,5 +7,5 @@ __email__ = 'joe@gezo.net'
 __version__ = '0.1.0'
 
 
-from decepticon._models import build_inpainter, build_classifier, build_mask_generator
+from decepticon._models import build_inpainter, build_classifier, build_mask_generator, build_discriminator
 from decepticon._synthetic import build_synthetic_dataset
