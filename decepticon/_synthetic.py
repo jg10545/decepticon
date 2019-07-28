@@ -22,7 +22,7 @@ def _rand_rectangle(H,W):
     return top, left, top+dh, left+dw
 
 
-def _generate_img(imshape, label, num_rectangles=25):
+def _generate_img(imshape, label, num_rectangles=25, num_empty=0):
     """
     generate an image that's random noise with some random 
     rectangular patches
@@ -37,20 +37,41 @@ def _generate_img(imshape, label, num_rectangles=25):
         top, left, bottom, right = _rand_rectangle(imshape[0], imshape[1])
         img[top:bottom, left:right, np.random.randint(0,m)] = 0
         
+    for n in range(num_empty):
+        top, left, bottom, right = _rand_rectangle(imshape[0], imshape[1])
+        img[top:bottom, left:right, :] = 0
+        
     return img
 
 
-def build_synthetic_dataset(imshape=(128,128)):
+def build_synthetic_dataset(imshape=(128,128), num_rectangles=25, num_empty=0,
+                            mask_train=False, imgs_only=False):
     """
     Create a tf.data.Dataset object that generates random
     image/label pairs. Class 0 has blue and magenta patches,
     while class 1 has yellow as well.
+    
+    :num_rectangles: how many rectangles to draw per image
+    :num_empty: number of empty rectangles to draw (for pretraining object
+                classifier)
+    :mask_train: for training the mask generator- always use positive
+            samples but label them incorrectly (should they all be positive?)
+    :imgs_only: only return images
     """
     def _example_generator():
         while True:
-            label = np.random.randint(0,2)
-            yield _generate_img(imshape, label), label
-            
-    ds = tf.data.Dataset.from_generator(_example_generator, (tf.float32, tf.int64),
+            if mask_train:
+                yield _generate_img(imshape, 1, num_rectangles, num_empty), 0
+            elif imgs_only:
+                label = np.random.randint(0,2)
+                yield _generate_img(imshape, label, num_rectangles, num_empty)
+            else:
+                label = np.random.randint(0,2)
+                yield _generate_img(imshape, label, num_rectangles, num_empty), label
+    if imgs_only:
+        ds = tf.data.Dataset.from_generator(_example_generator, tf.float32,
+                                   output_shapes=(imshape[0], imshape[1], 3))
+    else:
+        ds = tf.data.Dataset.from_generator(_example_generator, (tf.float32, tf.int64),
                                    output_shapes=((imshape[0], imshape[1], 3), ()))
     return ds
