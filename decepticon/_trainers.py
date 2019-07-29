@@ -140,7 +140,8 @@ class Trainer(object):
     
     def __init__(self, mask_generator, classifier, inpainter, discriminator,
                  mask_trainer_dataset, image_dataset, lr=1e-3,
-                 steps_per_epoch=100, batch_size=64):
+                 steps_per_epoch=100, batch_size=64,
+                 class_loss_weight=12, exponential_loss_weight=18):
         """
         :mask_generator: keras mask generator model
         :classifier: pretrained convnet for classifying images
@@ -148,6 +149,8 @@ class Trainer(object):
         :discriminator: Keras model for pixelwise real/fake discrimination
         :mask_trainer_dataset: tf.data.Dataset object with ___
         :image_dataset: tf.data.Dataset object with ___
+        :class_loss_weight: for mask generator, weight on classification loss
+        :exponential_loss_weight: for mask generator, weight on exponential loss.
         """
         self.epoch = 0
         self._steps_per_epoch = steps_per_epoch
@@ -158,7 +161,9 @@ class Trainer(object):
         self.disc_accs = []
         self._mask_generator_trainer = build_mask_generator_trainer(mask_generator, 
                                                                     classifier, 
-                                                      inpainter, lr)
+                                                      inpainter, lr,
+                                                      class_loss_weight=class_loss_weight,
+                                                      exponential_loss_weight=exponential_loss_weight)
         self._inpainter_trainer = build_inpainter_trainer(inpainter, 
                                                           discriminator, lr)
         self._discriminator_trainer = build_discriminator_trainer(inpainter, 
