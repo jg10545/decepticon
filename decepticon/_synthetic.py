@@ -55,20 +55,26 @@ def build_synthetic_dataset(imshape=(128,128), num_rectangles=25, num_empty=0,
     :num_empty: number of empty rectangles to draw (for pretraining object
                 classifier)
     :mask_train: for training the mask generator- always use positive
-            samples but label them incorrectly (should they all be positive?)
+            samples but label them incorrectly (should they all be positive?).
+            also return a blank mask for exponential loss
     :imgs_only: only return images
     """
     def _example_generator():
         while True:
             if mask_train:
-                yield _generate_img(imshape, 1, num_rectangles, num_empty), 0
+                y = (0, np.zeros((imshape[0], imshape[1],1), dtype=np.int64))
+                yield _generate_img(imshape, 1, num_rectangles, num_empty), y
             elif imgs_only:
                 label = np.random.randint(0,2)
                 yield _generate_img(imshape, label, num_rectangles, num_empty)
             else:
                 label = np.random.randint(0,2)
                 yield _generate_img(imshape, label, num_rectangles, num_empty), label
-    if imgs_only:
+    if mask_train:
+        ds = tf.data.Dataset.from_generator(_example_generator, (tf.float32, (tf.int64, tf.int64)),
+                                   output_shapes=((imshape[0], imshape[1], 3), 
+                                                  ((), (imshape[0], imshape[1], 1))))
+    elif imgs_only:
         ds = tf.data.Dataset.from_generator(_example_generator, tf.float32,
                                    output_shapes=(imshape[0], imshape[1], 3))
     else:
