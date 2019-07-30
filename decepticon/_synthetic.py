@@ -65,7 +65,8 @@ def build_synthetic_dataset(imshape=(128,128), num_rectangles=25, num_empty=0,
                 y = (0, np.zeros((imshape[0], imshape[1],1), dtype=np.int64))
                 yield _generate_img(imshape, 1, num_rectangles, num_empty), y
             elif imgs_only:
-                label = np.random.randint(0,2)
+                #label = np.random.randint(0,2)
+                label = 0
                 yield _generate_img(imshape, label, num_rectangles, num_empty)
             else:
                 label = np.random.randint(0,2)

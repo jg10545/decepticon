@@ -226,7 +226,8 @@ class Trainer(object):
                     inpaint = False
                 # one batch on discriminator    
                 else:
-                    disc_loss, disc_acc = self._discriminator_trainer.train_on_batch(x,mask_target)
+                    #disc_loss, disc_acc = self._discriminator_trainer.train_on_batch(x,mask_target)
+                    disc_loss, disc_acc = self._discriminator_trainer.train_on_batch(x,mask_sample)
                     self.disc_losses.append(disc_loss)
                     self.disc_accs.append(disc_acc)
                     inpaint = True
