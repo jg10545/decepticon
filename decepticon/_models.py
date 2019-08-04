@@ -218,6 +218,10 @@ def build_inpainter(downsample=1):
     bottleneck = InpainterBottleneck(downsample=downsample)
     upsampler = InpainterUpsampler(downsample=downsample)
     
+    for model in [downsampler, bottleneck, upsampler]:
+        for l in model.layers:
+            l._name = "inpainter_" + l.name
+    
     inpt = tf.keras.layers.Input((None, None, 3))
     #net = downsampler(inpt)
     #net = bottleneck(net)
@@ -227,8 +231,8 @@ def build_inpainter(downsample=1):
     net = _compose(net, upsampler)
     #return tf.keras.Model(inpt, net) 
     model = tf.keras.Model(inpt, net)
-    for l in model.layers:
-        l._name = "inpainter_" + l.name
+    #for l in model.layers:
+    #    l._name = "inpainter_" + l.name
     return model
 
 
@@ -288,14 +292,19 @@ def build_classifier(fcn=None, target_classes=1, downsample=1):
                                           include_top=False)
 
     head = ClassificationHead(target_classes, downsample)
+    for l in fcn.layers:
+        l._name = "classifier_" + l.name
+    for l in head.layers:
+        l._name = "classifier_" + l.name
+    
     inpt = tf.keras.layers.Input((None, None, 3))
     net = _compose(inpt, fcn)
     net = _compose(net, head)
    
     #return tf.keras.Model(inpt, net)
     model = tf.keras.Model(inpt, net)
-    for l in model.layers:
-        l._name = "classifier_" + l.name
+    #for l in model.layers:
+    #    l._name = "classifier_" + l.name
     return model
 
 
@@ -314,16 +323,20 @@ def build_mask_generator(fcn=None, target_classes=1, downsample=1):
         
     head = MaskGeneratorHead(target_classes, downsample)
     
+    for l in fcn.layers:
+        l._name = "maskgen_" + l.name
+        
+    for l in head.layers:
+        l._name = "maskgen_" + l.name
+    
     inpt = tf.keras.layers.Input((None, None, 3))
-    #net = fcn(inpt)
-    #net = head(net)
     net = _compose(inpt, fcn)
     net = _compose(net, head)
     
     #return tf.keras.Model(inpt, net)
     model = tf.keras.Model(inpt, net)
-    for l in model.layers:
-        l._name = "maskgen_" + l.name
+    #for l in model.layers:
+    #    l._name = "maskgen_" + l.name
     return model
 
 
@@ -394,10 +407,12 @@ def build_discriminator(downsample=1):
     
     inpt = tf.keras.layers.Input((None, None, 3))
     disc = LocalDiscriminator(downsample)
+    for l in disc.layers:
+        l._name = "discriminator_" + l.name
     net = _compose(inpt, disc)
     
     #return tf.keras.Model(inpt, net)
     model = tf.keras.Model(inpt, net)
-    for l in model.layers:
-        l._name = "discriminator_" + l.name
+    #for l in model.layers:
+    #    l._name = "discriminator_" + l.name
     return model

@@ -59,6 +59,7 @@ def build_synthetic_dataset(imshape=(128,128), num_rectangles=25, num_empty=0,
             also return a blank mask for exponential loss
     :imgs_only: only return images
     """
+    print("dont forget to swap this back")
     def _example_generator():
         while True:
             if mask_train:

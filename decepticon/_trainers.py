@@ -262,7 +262,6 @@ class Trainer(object):
         x_pos = self.eval_pos
         x_neg = self.eval_neg
         N_pos = x_pos.shape[0]
-        N_neg = x_neg.shape[0]
         # label positive examples "0"
         classvals = np.zeros(N_pos, dtype=np.int64)
         emptymask = np.zeros((N_pos, x_pos.shape[1], x_pos.shape[2],1))
@@ -291,20 +290,13 @@ class Trainer(object):
                              concatenated, max_images=5,
                              step=self.global_step)
    
-            tf.contrib.summary.scalar("mask_generator_total_loss", maskgen_losses[0])#, 
-                                      #step=self.global_step)
-            tf.contrib.summary.scalar("mask_generator_classifier_loss", maskgen_losses[1])#, 
-                                      #step=self.global_step)
-            tf.contrib.summary.scalar("mask_generator_exponential_loss", maskgen_losses[2])#, 
-                                      #step=self.global_step)
-            tf.contrib.summary.scalar("mask_generator_classifier_accuracy", maskgen_losses[3])#, 
-                                      #step=self.global_step)
-            tf.contrib.summary.scalar("inpainter_total_loss", inpainter_losses[0])#, 
-                                      #step=self.global_step)
-            tf.contrib.summary.scalar("inpainter_reconstruction_L1_loss", inpainter_losses[1])#, 
-                                      #step=self.global_step)
-            tf.contrib.summary.scalar("inpainter_discriminator_GAN_loss", inpainter_losses[2])#, 
-                                      #step=self.global_step)
+            tf.contrib.summary.scalar("mask_generator_total_loss", maskgen_losses[0])
+            tf.contrib.summary.scalar("mask_generator_classifier_loss", maskgen_losses[1])
+            tf.contrib.summary.scalar("mask_generator_exponential_loss", maskgen_losses[2])
+            tf.contrib.summary.scalar("mask_generator_classifier_accuracy", maskgen_losses[3])
+            tf.contrib.summary.scalar("inpainter_total_loss", inpainter_losses[0])
+            tf.contrib.summary.scalar("inpainter_reconstruction_L1_loss", inpainter_losses[1])
+            tf.contrib.summary.scalar("inpainter_discriminator_GAN_loss", inpainter_losses[2])
 
         self.global_step.assign_add(1)
 
