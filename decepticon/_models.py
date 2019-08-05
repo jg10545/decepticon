@@ -172,21 +172,24 @@ def build_inpainter(input_shape=(None, None, 3), downsample=1):
     
     :downsample: reduce number of kernels by this factor
     """
-    downsampler = InpainterDownsampler(input_shape, downsample=downsample)
-    bottleneck = InpainterBottleneck(downsampler.output_shape[1:], downsample=downsample)
-    upsampler = InpainterUpsampler(bottleneck.output_shape[1:], downsample=downsample)
+    with tf.name_scope("downsampler"):
+        downsampler = InpainterDownsampler(input_shape, downsample=downsample)
+    with tf.name_scope("bottleneck"):
+        bottleneck = InpainterBottleneck(downsampler.output_shape[1:], downsample=downsample)
+    with tf.name_scope("upsampler"):
+        upsampler = InpainterUpsampler(bottleneck.output_shape[1:], downsample=downsample)
     
-    for model in [downsampler, bottleneck, upsampler]:
-        for l in model.layers:
-            l._name = "inpainter_" + l.name
+    #for model in [downsampler, bottleneck, upsampler]:
+    #    for l in model.layers:
+    #        l._name = "inpainter_" + l.name
     
     inpt = tf.keras.layers.Input(input_shape)
-    #net = downsampler(inpt)
-    #net = bottleneck(net)
-    #net = upsampler(net)
-    net = _compose(inpt, downsampler)
-    net = _compose(net, bottleneck)
-    net = _compose(net, upsampler)
+    net = downsampler(inpt)
+    net = bottleneck(net)
+    net = upsampler(net)
+    #net = _compose(inpt, downsampler)
+    #net = _compose(net, bottleneck)
+    #net = _compose(net, upsampler)
     #return tf.keras.Model(inpt, net) 
     model = tf.keras.Model(inpt, net)
     #for l in model.layers:
@@ -229,20 +232,23 @@ def build_classifier(fcn=None, target_classes=1, downsample=1):
     :fcn_trainable:
     """
     if fcn is None:
-        fcn = tf.keras.applications.VGG19(weights="imagenet", 
+        with tf.name_scope("classifier"):
+            fcn = tf.keras.applications.VGG19(weights="imagenet", 
                                           include_top=False)
-
-    head = ClassificationHead(fcn.output_shape[1:], target_classes, downsample)
+    with tf.name_scope("classification_head"):
+        head = ClassificationHead(fcn.output_shape[1:], target_classes, 
+                                  downsample)
     
-    for l in fcn.layers:
-        l._name = "classifier_" + l.name
-    for l in head.layers:
-        l._name = "classifier_" + l.name
+    #for l in fcn.layers:
+    #    l._name = "classifier_" + l.name
+    #for l in head.layers:
+    #    l._name = "classifier_" + l.name
     
     inpt = tf.keras.layers.Input((None, None, 3))
-    net = _compose(inpt, fcn)
-    net = _compose(net, head)
-   
+    #net = _compose(inpt, fcn)
+    #net = _compose(net, head)
+    net = fcn(inpt)
+    net = head(net)
     #return tf.keras.Model(inpt, net)
     model = tf.keras.Model(inpt, net)
     #for l in model.layers:
@@ -261,20 +267,22 @@ def build_mask_generator(fcn=None, target_classes=1, downsample=1):
     :downsample: factor to downsample kernels by
     """
     if fcn is None:
-        fcn = modified_vgg19()
-        
-    head = MaskGeneratorHead(fcn.output_shape[1:], downsample, target_classes)
+        with tf.name_scope("maskgen_fcn"):
+            fcn = modified_vgg19()
+    with tf.name_scope("maskgen_head"):
+        head = MaskGeneratorHead(fcn.output_shape[1:], downsample, target_classes)
     
-    for l in fcn.layers:
-        l._name = "maskgen_" + l.name
+    #for l in fcn.layers:
+    #    l._name = "maskgen_" + l.name
         
-    for l in head.layers:
-        l._name = "maskgen_" + l.name
+    #for l in head.layers:
+    #    l._name = "maskgen_" + l.name
     
     inpt = tf.keras.layers.Input((None, None, 3))
-    net = _compose(inpt, fcn)
-    net = _compose(net, head)
-    
+    #net = _compose(inpt, fcn)
+    #net = _compose(net, head)
+    net = fcn(inpt)
+    net = head(net)
     #return tf.keras.Model(inpt, net)
     model = tf.keras.Model(inpt, net)
     #for l in model.layers:
@@ -338,11 +346,12 @@ def build_discriminator(input_shape=(None, None, 3), downsample=1):
     """
     
     inpt = tf.keras.layers.Input(input_shape)
-    disc = LocalDiscriminator(input_shape, downsample)
-    for l in disc.layers:
-        l._name = "discriminator_" + l.name
-    net = _compose(inpt, disc)
-    
+    with tf.name_scope("discriminator"):
+        disc = LocalDiscriminator(input_shape, downsample)
+    #for l in disc.layers:
+    #    l._name = "discriminator_" + l.name
+    #net = _compose(inpt, disc)
+    net = disc(inpt)
     #return tf.keras.Model(inpt, net)
     model = tf.keras.Model(inpt, net)
     #for l in model.layers:
