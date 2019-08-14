@@ -1,8 +1,111 @@
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
+import tensorflow.keras.backend as K
 from decepticon._losses import exponential_loss, least_squares_gan_loss
 
+
+
+
+@tf.function
+def maskgen_training_step(opt, inpt_img, maskgen, classifier, 
+                          inpainter, cls_weight=1, exp_weight=0.1):
+    """
+    TensorFlow function to perform one training step on the mask generator.
+    
+    NOT currently set up for multi-class training.
+    
+    :opt: keras optimizer
+    :input_img: batch of input images
+    :maskgen: mask generator model
+    :classifier: classifier model
+    :inpainter: inpainting model
+    :cls_weight: weight for classification loss (in paper: 12)
+    :exp_weight: weight for exponential loss (in paper: 18)
+    
+    Returns
+    :cls_loss: classification loss for the batch
+    :exp_loss: exponential loss for the batch
+    :loss: total weighted loss for the batch
+    :mask: batch masks (for use in mask buffer)
+    """
+    with tf.GradientTape() as tape:
+        # predict a mask from the original image and mask it
+        mask = maskgen(inpt_img)
+        inverse_mask = 1-mask
+        masked_inpt = inpt_img*inverse_mask
+        
+        # fill in with inpainter
+        inpainted = inpainter(masked_inpt)
+        y = masked_inpt + mask*inpainted
+        
+        
+        # run masked image through classifier
+        softmax_out = classifier(y)
+    
+        # compute losses
+        cls_loss = tf.reduce_mean(-1*tf.log(softmax_out[:,0] + K.epsilon()))
+        exp_loss = tf.reduce_mean(
+                            tf.exp(tf.reduce_mean(mask, axis=[1,2,3])))
+        loss = cls_weight*cls_loss + exp_weight*exp_loss
+        
+    # compute gradients and update
+    variables = maskgen.trainable_variables
+    gradients = tape.gradient(loss, variables)
+    opt.apply_gradients(zip(gradients, variables))
+    
+    return cls_loss, exp_loss, loss, mask
+
+
+
+
+@tf.function
+def inpainter_training_step(opt, inpt_img, mask, inpainter,
+                            disc, recon_weight=100,
+                            disc_weight=2):
+    """
+    TensorFlow function to perform one training step on the inpainter.
+    
+    NOT currently set up for multi-class training.
+    
+    :opt: keras optimizer
+    :input_img: batch of input images
+    :mask: batch of masks from mask buffer
+    :inpainter: inpainting model
+    :disc: discriminator model
+    :recon_weight: reconstruction loss weight
+    :disc_weight: discriminator loss weight
+    
+    Returns
+    :recon_loss: reconstruction loss for the batch
+    :disc_loss: discriminator loss for the batch
+    :loss: total weighted loss for the batch
+    """
+    with tf.GradientTape() as tape:
+        # predict a mask from the original image and mask it
+        #mask = maskgen(inpt_img)
+        inverse_mask = 1 - mask
+        masked_inpt = inpt_img*inverse_mask
+        
+        # fill in with inpainter
+        inpainted = inpainter(masked_inpt)
+        y = masked_inpt + mask*inpainted
+        
+        
+        # run masked image through discriminator
+        sigmoid_out = disc(y)
+    
+        # compute losses
+        recon_loss = tf.reduce_mean(tf.abs(y - inpt_img))
+        disc_loss = tf.reduce_mean(-1*tf.log(1 - sigmoid_out + K.epsilon()))
+        loss = recon_weight*recon_loss + disc_weight*disc_loss
+        
+    # compute gradients and update
+    variables = inpainter.trainable_variables
+    gradients = tape.gradient(loss, variables)
+    opt.apply_gradients(zip(gradients, variables))
+    
+    return recon_loss, disc_loss, loss
 
 
 
