@@ -93,6 +93,7 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
         
         
         # run masked image through discriminator
+        # note that outputs will be (batch_size, X, Y, 1)
         sigmoid_out = disc(y)
     
         # compute losses
@@ -109,102 +110,52 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
 
 
 
-def build_mask_generator_trainer(mask_generator, classifier, inpainter,
-                                 lr=1e-3, class_loss_weight=12,
-                                 exponential_loss_weight=18):
+
+
+@tf.function
+def discriminator_training_step(opt, inpt_img, mask, inpainter,
+                            disc):
     """
-    Build a compiled Keras model for training the mask generator. This
-    implementation does not include the paper's Wasserstein GAN component.
+    TensorFlow function to perform one training step on the discriminator.
     
-    :mask_generator: keras mask generator model
-    :classifier: pretrained convnet for classifying images
-    :inpainter: keras inpainting model
-    :lr: learning rate for ADAM optimizer
-    :class_loss_weight: weight on classification loss
-    :exponential_loss_weight: weight on exponential loss.
+    :opt: keras optimizer
+    :input_img: batch of input images
+    :mask: batch of masks from mask buffer
+    :inpainter: inpainting model
+    :disc: discriminator model
+    :recon_weight: reconstruction loss weight
+    :disc_weight: discriminator loss weight
+    
+    Returns
+    :recon_loss: reconstruction loss for the batch
+    :disc_loss: discriminator loss for the batch
+    :loss: total weighted loss for the batch
     """
-    opt = tf.keras.optimizers.Adam(lr)
-    inpt = tf.keras.layers.Input((None, None, 3), name="maskgen_input")
-
-    # compute mask, inverse mask, and masked input.
-    # mask is 1 in the removed region, 0 outside.
-    # inverse mask is 0 in removed region, 1 outside.
-    mask_generator.trainable = True
-    mask = mask_generator(inpt)
-    inverse_mask = tf.keras.layers.Lambda(lambda x: 1.-x)(mask)
-
-    masked_input = tf.keras.layers.Multiply()([inpt, inverse_mask])
-
-    # push through inpainter. we train that in a separate step
-    # so set trainable=False for each layer.
-    inpainter.trainable = False
-    inpainted = inpainter(masked_input)
+    with tf.GradientTape() as tape:
+        # predict a mask from the original image and mask it
+        #mask = maskgen(inpt_img)
+        inverse_mask = 1 - mask
+        masked_inpt = inpt_img*inverse_mask
+        
+        # fill in with inpainter
+        inpainted = inpainter(masked_inpt)
+        y = masked_inpt + mask*inpainted
+        
+        
+        # run masked image through discriminator
+        # note that outputs will be (batch_size, X, Y, 1)
+        sigmoid_out = disc(y)
+        
+        # compute loss
+        loss = least_squares_gan_loss(mask, sigmoid_out)
+        
+    # compute gradients and update
+    variables = disc.trainable_variables
+    gradients = tape.gradient(loss, variables)
+    opt.apply_gradients(zip(gradients, variables))
     
-    # combine inpainter outputs with mask, and add to
-    # original masked image
-    masked_inpainted = tf.keras.layers.Multiply()([inpainted, mask])
-    assembled_inpainted = tf.keras.layers.Add()([masked_inpainted, masked_input])
+    return loss
 
-    # now classify as 0 or 1. classifier is pretrained
-    # so freeze this as well.
-    classifier.trainable = False
-    softmax_out = classifier(assembled_inpainted)
-    
-    mask_generator_trainer = tf.keras.Model(inpt, [softmax_out, mask])
-    mask_generator_trainer.compile(
-            opt,
-            loss=[tf.keras.losses.sparse_categorical_crossentropy,
-                  exponential_loss],
-                  loss_weights=[class_loss_weight, 
-                                exponential_loss_weight],
-                  metrics=["accuracy"]
-                  )
-    return mask_generator_trainer
-
-
-
-def build_inpainter_trainer(inpainter, discriminator, lr=1e-3,
-                            reconstruction_loss=100, disc_loss=2):
-    """
-    Build a compiled Keras model for training the inpainter.
-    
-    :inpainter: Keras model for inpainting
-    :discriminator: Keras model for pixelwise real/fake discrimination
-    :lr: learning rate for ADAM optimizer
-    :reconstruction_loss: weight for L1 reconstruction loss
-    :disc_loss: weight for GAN loss on inpainter
-    """
-    opt = tf.keras.optimizers.Adam(lr)
-    inpt = tf.keras.layers.Input((None, None, 3))
-    mask = tf.keras.layers.Input((None, None, 1))
-
-    #
-    inverse_mask = tf.keras.layers.Lambda(lambda x: 1.-x)(mask)
-    masked_input = tf.keras.layers.Multiply()([inpt, inverse_mask])
-
-    # push through inpainter.
-    inpainter.trainable = True
-    inpainted = inpainter(masked_input)
-    
-    # combine inpainter outputs with mask, and add to
-    # original masked image
-    masked_inpainted = tf.keras.layers.Multiply()([inpainted, mask])
-    assembled_inpainted = tf.keras.layers.Add()([masked_inpainted, masked_input])
-
-    # now do pixelwise classification as 0 or 1 (real/fake).
-    # discriminator is trained in a separate step
-    discriminator.trainable = False
-    softmax_out = discriminator(assembled_inpainted)
-    
-    inpainter_trainer = tf.keras.Model([inpt,mask], [assembled_inpainted, softmax_out])
-    inpainter_trainer.compile(
-            opt,
-            loss=[tf.keras.losses.mae, 
-                  least_squares_gan_loss],
-            loss_weights = [reconstruction_loss, disc_loss],
-            metrics=["mae"]
-            )
-    return inpainter_trainer
 
 
 
@@ -254,9 +205,9 @@ class Trainer(object):
     """
     
     def __init__(self, mask_generator, classifier, inpainter, discriminator,
-                 mask_trainer_dataset, image_dataset, lr=1e-3,
+                 mask_trainer_dataset, inpainter_dataset, lr=1e-3,
                  steps_per_epoch=100, batch_size=64,
-                 class_loss_weight=12, exponential_loss_weight=18,
+                 class_loss_weight=1, exponential_loss_weight=0.1,
                  reconstruction_loss=100, disc_loss=2,
                  eval_pos=None, eval_neg=None, logdir=None):
         """
@@ -265,7 +216,7 @@ class Trainer(object):
         :inpainter: keras inpainting model
         :discriminator: Keras model for pixelwise real/fake discrimination
         :mask_trainer_dataset: tf.data.Dataset object with ___
-        :image_dataset: tf.data.Dataset object with ___
+        :inpainter_dataset: tf.data.Dataset object with ___
         :class_loss_weight: for mask generator, weight on classification loss
         :exponential_loss_weight: for mask generator, weight on exponential loss.
         :reconstruction_loss: weight for L1 reconstruction loss
@@ -278,6 +229,10 @@ class Trainer(object):
         self.epoch = 0
         self.eval_pos = eval_pos
         self.eval_neg = eval_neg
+        self.weights = {"class":class_loss_weight,
+                        "exp":exponential_loss_weight,
+                        "recon":reconstruction_loss,
+                        "disc":disc_loss}
         if logdir is not None:
             self._summary_writer = tf.contrib.summary.create_file_writer(logdir,
                                             flush_millis=10000)
@@ -290,77 +245,83 @@ class Trainer(object):
         self.disc_losses = []
         self.disc_accs = []
         self.recon_loss = []
-        self._mask_generator_trainer = build_mask_generator_trainer(mask_generator, 
-                                                                    classifier, 
-                                                      inpainter, lr,
-                                                      class_loss_weight=class_loss_weight,
-                                                      exponential_loss_weight=exponential_loss_weight)
-        self._inpainter_trainer = build_inpainter_trainer(inpainter, 
-                                                          discriminator, lr,
-                                                          reconstruction_loss=reconstruction_loss,
-                                                          disc_loss=disc_loss)
-        self._discriminator_trainer = build_discriminator_trainer(inpainter, 
-                                                    discriminator, lr)
-        self._inpainter = inpainter
-        self._classifier = classifier
-        self._maskgen = mask_generator
-        self._discriminator = discriminator
+        self.maskgen = mask_generator
+        self.classifier = classifier
+        self.inpainter = inpainter
+        self.discriminator = discriminator
+        #self._mask_generator_trainer = build_mask_generator_trainer(mask_generator, 
+        #                                                            classifier, 
+        #                                              inpainter, lr,
+        #                                              class_loss_weight=class_loss_weight,
+        #                                              exponential_loss_weight=exponential_loss_weight)
+        #self._inpainter_trainer = build_inpainter_trainer(inpainter, 
+        #                                                  discriminator, lr,
+        #                                                  reconstruction_loss=reconstruction_loss,
+        #                                                  disc_loss=disc_loss)
+        #self._discriminator_trainer = build_discriminator_trainer(inpainter, 
+        #                                            discriminator, lr)
+        #self._inpainter = inpainter
+        #self._classifier = classifier
+        #self._maskgen = mask_generator
+        #self._discriminator = discriminator
         self._ds_mask = mask_trainer_dataset
-        self._ds_img = image_dataset
+        self._ds_inpainter = inpainer_dataset
+        self._optimizers = {
+                x:tf.keras.optimizers.Adam(lr) for x in ["mask", "inpainter", 
+                                          "discriminator"]}
         
         
     def fit(self, epochs=1):
         """
         
         """
-        inpaint = True
-
         # for each epoch
         for e in tqdm(range(epochs)):
-            # one training epoch on mask generator
-            self._mask_generator_trainer.fit(self._ds_mask, 
-                               #validation_data=(imgs, (labs, ms)),
-                               steps_per_epoch=self._steps_per_epoch,
-                               epochs=1,
-                               initial_epoch=self.epoch,
-                               verbose=0)
-            # one training epoch on the inpainter and discriminator:
-    
-            # generate some mask samples for the mask buffer
-            mask_buffer = self._maskgen.predict(self._ds_img, 
-                                          steps=self._steps_per_epoch, 
-                                          #batch_size=self._batch_size,
-                                          verbose=0)    
-            # now one training epoch on inpainter/discriminator
-            step = 0
-            for im in self._ds_img:
-                im = im.numpy()
-                sample_indices = np.random.choice(np.arange(im.shape[0]), 
-                                          replace=False,
-                                          size=im.shape[0])
-                mask_sample = mask_buffer[sample_indices,:,:,:]
-                mask_target = np.zeros(mask_sample.shape, dtype=np.int64)
-                x = (im, mask_sample)
-                y = (im, mask_target)
-        
-                # one batch on inpainter
-                if inpaint:
-                    inp_loss, recon_loss, *_ =  self._inpainter_trainer.train_on_batch(x,y)
-                    self.inp_losses.append(inp_loss)
-                    self.recon_loss.append(recon_loss)
-                    inpaint = False
-                # one batch on discriminator    
-                else:
-                    disc_loss, disc_acc = self._discriminator_trainer.train_on_batch(x,mask_sample)
-                    self.disc_losses.append(disc_loss)
-                    self.disc_accs.append(disc_acc)
-                    inpaint = True
-                step += 1
-                if step > self._steps_per_epoch:
+            # one training epoch on mask generator, recording masks to buffer
+            mask_buffer = []
+            for e, x in enumerate(self._ds_mask):
+                # run training step
+                cls_loss, exp_loss, loss, mask = maskgen_training_step(
+                        self._optimizers["mask"], x, self.maskgen, 
+                        self.classifier, self.inpainter,
+                        self.weights["class"], self.weights["exp"])
+                # record batch of masks to buffer
+                mask_buffer.append(mask)
+                
+                if e >= self._steps_per_epoch:
+                    mask_buffer = np.concatenate(mask_buffer, axis=0)
                     break
+                
+            # one training epoch on the inpainter and discriminator:
+            for e, x in enumerate(self._ds_inpainter):
+                # randomly select a mask batch
+                sample_indices = np.random.choice(np.arange(mask_buffer.shape[0]), 
+                                          replace=False,
+                                          size=x.get_shape().as_list()[0])
+                mask = mask_buffer[sample_indices]
+                
+                # every other step: train inpainter
+                if e % 2 == 0:
+                    # run training step
+                    recon_loss, disc_loss, loss = inpainter_training_step(
+                            self._optimizers["inpainter"], x, mask, 
+                            self.inpainter, self.disc, 
+                            self.weights["recon"], self.weights["disc"])
+                # alternating step train discriminator
+                else:
+                    # run training step
+                    loss = discriminator_training_step(
+                            self._optimizers["discriminator"],
+                            x, mask, self.inpainter, self.disc)
+                if e >= self._steps_per_epoch:
+                    mask_buffer = np.concatenate(mask_buffer, axis=0)
+                    break
+            
             self.global_step.assign_add(1)
             if (self.eval_pos is not None) & (self.eval_neg is not None):
                 self.evaluate()
+                
+                
     
     def evaluate(self):
         """
