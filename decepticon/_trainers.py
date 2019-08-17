@@ -160,44 +160,6 @@ def discriminator_training_step(opt, inpt_img, mask, inpainter,
 
 
 
-def build_discriminator_trainer(inpainter, discriminator, lr=1e-3):
-    """
-    
-    :inpainter: Keras model for inpainting
-    :discriminator: Keras model for pixelwise real/fake discrimination
-    :lr: learning rate for ADAM optimizer
-    """
-    opt = tf.keras.optimizers.Adam(lr)
-    inpt = tf.keras.layers.Input((None, None, 3))
-    mask = tf.keras.layers.Input((None, None, 1))
-
-    #
-    inverse_mask = tf.keras.layers.Lambda(lambda x: 1.-x)(mask)
-    masked_input = tf.keras.layers.Multiply()([inpt, inverse_mask])
-
-    # push through inpainter. for this step we hold the inpainter fixed.
-    inpainter.trainable = False
-    inpainted = inpainter(masked_input)
-    
-    # combine inpainter outputs with mask, and add to
-    # original masked image
-    masked_inpainted = tf.keras.layers.Multiply()([inpainted, mask])
-    assembled_inpainted = tf.keras.layers.Add()([masked_inpainted, masked_input])
-
-    # now do pixelwise classification as 0 or 1 (real/fake).
-    discriminator.trainable = True
-    softmax_out = discriminator(assembled_inpainted)
-    
-    discriminator_trainer = tf.keras.Model([inpt,mask], softmax_out)
-    discriminator_trainer.compile(
-            opt,
-            loss=least_squares_gan_loss,
-            metrics=["accuracy"]
-            )
-    return discriminator_trainer
-
-
-
 
 class Trainer(object):
     """
