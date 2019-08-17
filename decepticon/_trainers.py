@@ -209,20 +209,20 @@ class Trainer(object):
                  steps_per_epoch=100, batch_size=64,
                  class_loss_weight=1, exponential_loss_weight=0.1,
                  reconstruction_loss=100, disc_loss=2,
-                 eval_pos=None, eval_neg=None, logdir=None):
+                 eval_pos=None, logdir=None):
         """
         :mask_generator: keras mask generator model
         :classifier: pretrained convnet for classifying images
         :inpainter: keras inpainting model
         :discriminator: Keras model for pixelwise real/fake discrimination
-        :mask_trainer_dataset: tf.data.Dataset object with ___
-        :inpainter_dataset: tf.data.Dataset object with ___
+        :mask_trainer_dataset: tf.data.Dataset object generating positive example batches
+        :inpainter_dataset: tf.data.Dataset object generating negative example batches
         :class_loss_weight: for mask generator, weight on classification loss
         :exponential_loss_weight: for mask generator, weight on exponential loss.
         :reconstruction_loss: weight for L1 reconstruction loss
         :disc_loss: weight for GAN loss on inpainter
-        :eval_data:
-        :logdir:
+        :eval_pos: batch of positive images for evaluation
+        :logdir: where to save tensorboard logs
         """
         self.global_step = tf.compat.v1.train.get_or_create_global_step()
         assert tf.executing_eagerly(), "eager execution must be enabled first"
@@ -255,7 +255,13 @@ class Trainer(object):
         
     def fit(self, epochs=1):
         """
-        
+        Train the models for some number of epochs. Every epoch:
+            
+            1) run through the positive dataset to train the mask generator
+            2) run through the negative dataset, with alternating batches:
+                -even batches, update inpainter
+                -odd batches, update discriminator
+            3) record tensorboard summaries
         """
         # for each epoch
         for e in tqdm(range(epochs)):
@@ -307,12 +313,12 @@ class Trainer(object):
                                       step=self.global_step)
                 tf.contrib.summary.scalar("mask_generator_exponential_loss", exp_loss,
                                       step=self.global_step)
-                #tf.contrib.summary.scalar("mask_generator_classifier_accuracy", maskgen_losses[3], step=self.global_step)
+
                 tf.contrib.summary.scalar("inpainter_total_loss", inpaint_loss, 
-                                      step=self.epoch)
+                                      step=self.global_step)
                 tf.contrib.summary.scalar("inpainter_reconstruction_L1_loss", recon_loss,
                                       step=self.global_step)
-                tf.contrib.summary.scalar("inpainter_discriminator_GAN_loss", disc_loss,
+                tf.contrib.summary.scalar("discriminator_GAN_loss", disc_loss,
                                       step=self.global_step)
             # also record summary images
             if (self.eval_pos is not None) & (self.eval_neg is not None):
