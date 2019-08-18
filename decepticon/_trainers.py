@@ -190,7 +190,6 @@ class Trainer(object):
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.epoch = 0
         self.eval_pos = eval_pos
-        self.eval_neg = eval_neg
         self.weights = {"class":class_loss_weight,
                         "exp":exponential_loss_weight,
                         "recon":reconstruction_loss,
@@ -283,7 +282,7 @@ class Trainer(object):
                 tf.contrib.summary.scalar("discriminator_GAN_loss", disc_loss,
                                       step=self.global_step)
             # also record summary images
-            if (self.eval_pos is not None) & (self.eval_neg is not None):
+            if self.eval_pos is not None:
                 self.evaluate()
                 
             self.global_step.assign_add(1)
