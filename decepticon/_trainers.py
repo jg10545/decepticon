@@ -2,7 +2,8 @@ from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from decepticon._losses import exponential_loss, least_squares_gan_loss
+import os
+from decepticon._losses import least_squares_gan_loss
 
 
 
@@ -171,7 +172,7 @@ class Trainer(object):
                  steps_per_epoch=100, batch_size=64,
                  class_loss_weight=1, exponential_loss_weight=0.1,
                  reconstruction_loss=100, disc_loss=2,
-                 eval_pos=None, logdir=None):
+                 eval_pos=None, logdir=None, save_models=True):
         """
         :mask_generator: keras mask generator model
         :classifier: pretrained convnet for classifying images
@@ -185,11 +186,14 @@ class Trainer(object):
         :disc_loss: weight for GAN loss on inpainter
         :eval_pos: batch of positive images for evaluation
         :logdir: where to save tensorboard logs
+        :save_models: whether to save each component model at the end of
+                every epoch
         """
         self.global_step = tf.compat.v1.train.get_or_create_global_step()
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.epoch = 0
         self.eval_pos = eval_pos
+        self._save_models = save_models
         self.weights = {"class":class_loss_weight,
                         "exp":exponential_loss_weight,
                         "recon":reconstruction_loss,
@@ -198,6 +202,8 @@ class Trainer(object):
             self._summary_writer = tf.contrib.summary.create_file_writer(logdir,
                                             flush_millis=10000)
             self._summary_writer.set_as_default()
+            
+        self.logdir = logdir
             
         self._steps_per_epoch = steps_per_epoch
         self._batch_size = batch_size
@@ -285,6 +291,13 @@ class Trainer(object):
             if self.eval_pos is not None:
                 self.evaluate()
                 
+            # save all the component models
+            if (self.logdir is not None) & self._save_models:
+                self.maskgen.save(os.path.join(self.logdir, "mask_generator.h5"))
+                self.inpainter.save(os.path.join(self.logdir, "inpainter.h5"))
+                self.discriminator.save(os.path.join(self.logdir, "discriminator.h5"))
+                self.classifier.save(os.path.join(self.logdir, "classifier.h5"))
+            
             self.global_step.assign_add(1)
                 
                 
