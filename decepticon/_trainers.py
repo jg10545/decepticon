@@ -2,8 +2,9 @@ from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from decepticon._losses import exponential_loss, least_squares_gan_loss
-
+import os
+from decepticon._losses import least_squares_gan_loss
+from decepticon._loaders import image_loader_dataset
 
 
 
@@ -171,7 +172,7 @@ class Trainer(object):
                  steps_per_epoch=100, batch_size=64,
                  class_loss_weight=1, exponential_loss_weight=0.1,
                  reconstruction_loss=100, disc_loss=2,
-                 eval_pos=None, logdir=None):
+                 eval_pos=None, logdir=None, save_models=True):
         """
         :mask_generator: keras mask generator model
         :classifier: pretrained convnet for classifying images
@@ -185,12 +186,14 @@ class Trainer(object):
         :disc_loss: weight for GAN loss on inpainter
         :eval_pos: batch of positive images for evaluation
         :logdir: where to save tensorboard logs
+        :save_models: whether to save each component model at the end of
+                every epoch
         """
         self.global_step = tf.compat.v1.train.get_or_create_global_step()
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.epoch = 0
         self.eval_pos = eval_pos
-        self.eval_neg = eval_neg
+        self._save_models = save_models
         self.weights = {"class":class_loss_weight,
                         "exp":exponential_loss_weight,
                         "recon":reconstruction_loss,
@@ -199,6 +202,8 @@ class Trainer(object):
             self._summary_writer = tf.contrib.summary.create_file_writer(logdir,
                                             flush_millis=10000)
             self._summary_writer.set_as_default()
+            
+        self.logdir = logdir
             
         self._steps_per_epoch = steps_per_epoch
         self._batch_size = batch_size
@@ -283,9 +288,16 @@ class Trainer(object):
                 tf.contrib.summary.scalar("discriminator_GAN_loss", disc_loss,
                                       step=self.global_step)
             # also record summary images
-            if (self.eval_pos is not None) & (self.eval_neg is not None):
+            if self.eval_pos is not None:
                 self.evaluate()
                 
+            # save all the component models
+            if (self.logdir is not None) & self._save_models:
+                self.maskgen.save(os.path.join(self.logdir, "mask_generator.h5"))
+                self.inpainter.save(os.path.join(self.logdir, "inpainter.h5"))
+                self.discriminator.save(os.path.join(self.logdir, "discriminator.h5"))
+                self.classifier.save(os.path.join(self.logdir, "classifier.h5"))
+            
             self.global_step.assign_add(1)
                 
                 
@@ -317,3 +329,63 @@ class Trainer(object):
 
 
 
+
+
+def build_image_file_trainer(positive_filepaths, negative_filepaths,
+                             classifier,
+                             mask_generator=None, 
+                             inpainter=None, 
+                             discriminator=None,
+                             lr=1e-4, steps_per_epoch=100, batch_size=64,
+                             class_loss_weight=1, exponential_loss_weight=0.1,
+                             reconstruction_loss=100, disc_loss=2,
+                             logdir=None, save_models=True,
+                             num_parallel_calls=2):
+        """
+        Macro to set up a trainer for image files
+        
+        :positive_filepaths: list of paths to class-1 files
+        :negative_filepaths: list of paths to class-0 files
+        :classifier: pretrained convnet for classifying images
+        :mask_generator: keras mask generator model
+        :inpainter: keras inpainting model
+        :discriminator: Keras model for pixelwise real/fake discrimination
+        :mask_trainer_dataset: tf.data.Dataset object generating positive example batches
+        :inpainter_dataset: tf.data.Dataset object generating negative example batches
+        :class_loss_weight: for mask generator, weight on classification loss
+        :exponential_loss_weight: for mask generator, weight on exponential loss.
+        :reconstruction_loss: weight for L1 reconstruction loss
+        :disc_loss: weight for GAN loss on inpainter
+        :logdir: where to save tensorboard logs
+        :save_models: whether to save each component model at the end of
+                every epoch
+        """
+        # build dataset loaders
+        ds_pos = image_loader_dataset(positive_filepaths, batch_size=batch_size,
+                                      num_parallel_calls=num_parallel_calls)
+        ds_neg = image_loader_dataset(positive_filepaths, batch_size=batch_size,
+                                      num_parallel_calls=num_parallel_calls)
+        # pull out one batch for tensorboard visualizations
+        for x in ds_pos:
+            eval_pos = x.numpy()
+            break
+        
+        # build any models that were missing
+        if mask_generator is None:
+            from decepticon._models import build_mask_generator
+            mask_generator = build_mask_generator()
+        if inpainter is None:
+            from decepticon._models import build_inpainter
+            inpainter = build_inpainter()
+        if discriminator is None:
+            from decepticon._models import build_discriminator
+            discriminator = build_discriminator()
+            
+        return Trainer(mask_generator, classifier, inpainter, discriminator,
+                 ds_pos, ds_neg, lr=lr, steps_per_epoch=steps_per_epoch, 
+                 batch_size=batch_size, class_loss_weight=class_loss_weight,
+                 exponential_loss_weight=exponential_loss_weight,
+                 reconstruction_loss=reconstruction_loss, 
+                 disc_loss=disc_loss, eval_pos=eval_pos, 
+                 logdir=logdir, save_models=save_models)
+        
