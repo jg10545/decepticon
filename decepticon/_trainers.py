@@ -4,7 +4,7 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 import os
 from decepticon._losses import least_squares_gan_loss
-
+from decepticon._loaders import image_loader_dataset
 
 
 
@@ -329,3 +329,63 @@ class Trainer(object):
 
 
 
+
+
+def build_image_file_trainer(positive_filepaths, negative_filepaths,
+                             classifier,
+                             mask_generator=None, 
+                             inpainter=None, 
+                             discriminator=None,
+                             lr=1e-4, steps_per_epoch=100, batch_size=64,
+                             class_loss_weight=1, exponential_loss_weight=0.1,
+                             reconstruction_loss=100, disc_loss=2,
+                             logdir=None, save_models=True,
+                             num_parallel_calls=2):
+        """
+        Macro to set up a trainer for image files
+        
+        :positive_filepaths: list of paths to class-1 files
+        :negative_filepaths: list of paths to class-0 files
+        :classifier: pretrained convnet for classifying images
+        :mask_generator: keras mask generator model
+        :inpainter: keras inpainting model
+        :discriminator: Keras model for pixelwise real/fake discrimination
+        :mask_trainer_dataset: tf.data.Dataset object generating positive example batches
+        :inpainter_dataset: tf.data.Dataset object generating negative example batches
+        :class_loss_weight: for mask generator, weight on classification loss
+        :exponential_loss_weight: for mask generator, weight on exponential loss.
+        :reconstruction_loss: weight for L1 reconstruction loss
+        :disc_loss: weight for GAN loss on inpainter
+        :logdir: where to save tensorboard logs
+        :save_models: whether to save each component model at the end of
+                every epoch
+        """
+        # build dataset loaders
+        ds_pos = image_loader_dataset(positive_filepaths, batch_size=batch_size,
+                                      num_parallel_calls=num_parallel_calls)
+        ds_neg = image_loader_dataset(positive_filepaths, batch_size=batch_size,
+                                      num_parallel_calls=num_parallel_calls)
+        # pull out one batch for tensorboard visualizations
+        for x in ds_pos:
+            eval_pos = x.numpy()
+            break
+        
+        # build any models that were missing
+        if mask_generator is None:
+            from decepticon._models import build_mask_generator
+            mask_generator = build_mask_generator()
+        if inpainter is None:
+            from decepticon._models import build_inpainter
+            inpainter = build_inpainter()
+        if discriminator is None:
+            from decepticon._models import build_discriminator
+            discriminator = build_discriminator()
+            
+        return Trainer(mask_generator, classifier, inpainter, discriminator,
+                 ds_pos, ds_neg, lr=lr, steps_per_epoch=steps_per_epoch, 
+                 batch_size=batch_size, class_loss_weight=class_loss_weight,
+                 exponential_loss_weight=exponential_loss_weight,
+                 reconstruction_loss=reconstruction_loss, 
+                 disc_loss=disc_loss, eval_pos=eval_pos, 
+                 logdir=logdir, save_models=save_models)
+        
