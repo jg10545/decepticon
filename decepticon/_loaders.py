@@ -11,14 +11,14 @@ def _load_img(f):
 
 
 
-def image_loader_dataset(filepaths, batchsize=64, repeat=True, shuffle=1000, 
+def image_loader_dataset(filepaths, batch_size=64, repeat=True, shuffle=1000, 
                         num_parallel_calls=None):
     """
     Barebones function for building a tensorflow Dataset to load,
     shuffle, and batch images from disk.
     
     :filepaths: list of paths to files
-    :batchsize: size of batches; set to None to skip batching
+    :batch_size: size of batches; set to None to skip batching
     :repeat: whether to repeat when iteration reaches the end
     :shuffle: size of shuffle queue. set to False to skip shuffling
     :num_parallel_calls: number of threads to use for loading/decoding images
@@ -30,7 +30,7 @@ def image_loader_dataset(filepaths, batchsize=64, repeat=True, shuffle=1000,
         ds = ds.repeat()    
     if shuffle:
         ds = ds.shuffle(shuffle)
-    if batchsize:
-        ds = ds.batch(batchsize)
+    if batch_size:
+        ds = ds.batch(batch_size)
     
     return ds.prefetch(1)
