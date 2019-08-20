@@ -4,9 +4,23 @@ import tensorflow as tf
 
 from decepticon._layers import InstanceNormalizationLayer
 
+    
+def test_instance_normalization_layer_output_shape():
+    inshape = (2,5,7,3)
+    
+    instancenorm = InstanceNormalizationLayer()
+    assert instancenorm.compute_output_shape(inshape) == inshape
+    
+    
+def test_instance_normalization_layer_call():
+    inshape = (5,7,3)
+    
+    inpt = tf.keras.layers.Input(inshape)
+    net = InstanceNormalizationLayer().call(inpt)
+    assert isinstance(net, tf.Tensor)
+    
 
-
-def test_instance_normalization_layer():
+def test_instance_normalization_layer_correct_normalization():
     # dimensions of a batch of images
     N = 2
     H = 5
@@ -29,3 +43,5 @@ def test_instance_normalization_layer():
     for i in range(2):
         assert round(test_out[i,:,:,:].mean(), 3) == 0
         assert round(test_out[i,:,:,:].var(), 3) == 1
+        
+        
