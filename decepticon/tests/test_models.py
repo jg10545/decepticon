@@ -32,6 +32,13 @@ def test_MaskGeneratorHead_output_shape():
     inpt = tf.keras.layers.Input((32,32,512))
     net = maskhead(inpt)
     assert net.get_shape().as_list() == [None, 128, 128, 1]
+
+def test_MaskGeneratorHead_multiclass_output_shape():
+    maskhead = MaskGeneratorHead(target_classes=5)
+
+    inpt = tf.keras.layers.Input((32,32,512))
+    net = maskhead(inpt)
+    assert net.get_shape().as_list() == [None, 128, 128, 6]
     
     
 def test_InpainterDownsampler_output_shape():
@@ -92,8 +99,14 @@ def test_local_discriminator_input_output_shapes():
     
     
 def test_build_discriminator():
-    pass
-    #assert False
+    inpt = tf.keras.layers.Input((128,128,3))
+    disc = build_discriminator()
+    output = disc(inpt)
+    
+    outshape =  output.get_shape().as_list()
+    inshape = inpt.get_shape().as_list()
+    assert outshape[:-1] == inshape[:-1]
+    assert outshape[-1] == 1
 
 
 
