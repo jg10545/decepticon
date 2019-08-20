@@ -44,7 +44,41 @@ def _generate_img(imshape, label, num_rectangles=25, num_empty=0):
     return img
 
 
-def build_synthetic_dataset(imshape=(128,128), num_rectangles=25, num_empty=0,
+
+
+
+def build_synthetic_dataset(prob=0.5, imshape=(128,128), num_rectangles=25, 
+                            num_empty=0, return_labels=True):
+    """
+    Create a tf.data.Dataset object that generates random images.
+    Class 0 has blue and magenta patches, while class 1 has yellow as well.
+    
+    :prob: probability of generating a positive case. 
+    :imshape: image dimensions
+    :num_rectangles: how many rectangles to draw per image
+    :num_empty: number of empty rectangles to draw (for pretraining object
+                classifier)
+    :return_labels: whether dataset generates (image, label) tuples or just images
+    """
+    def _example_generator():
+        while True:
+            y = np.random.choice([0, 1], p=[1-prob, prob])
+            img = _generate_img(imshape, y, num_rectangles, num_empty)
+            if return_labels:
+                yield img, y
+            else:
+                yield img
+    if return_labels:
+        ds = tf.data.Dataset.from_generator(_example_generator, (tf.float32, tf.int64),
+                                   output_shapes=((imshape[0], imshape[1], 3), 
+                                                  ()))
+    else:
+        ds = tf.data.Dataset.from_generator(_example_generator, tf.float32,
+                                   output_shapes=(imshape[0], imshape[1], 3))
+    return ds
+
+
+def _deprecated_build_synthetic_dataset(imshape=(128,128), num_rectangles=25, num_empty=0,
                             mask_train=False, imgs_only=False):
     """
     Create a tf.data.Dataset object that generates random
