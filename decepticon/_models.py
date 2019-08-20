@@ -11,18 +11,6 @@ import tensorflow as tf
 
 from decepticon._layers import InstanceNormalizationLayer
 
-def _compose(net, model, trainable=True):
-    """
-    Hack for keras isue #10074
-    """
-    for l in model.layers:
-        # don't chain together input layers, since that causes
-        # some problems later
-        if not isinstance(l, tf.keras.layers.InputLayer):
-            net = l(net)
-            l.trainable = trainable
-    return net
-
     
 def ResidualBlock(filters, kernel_size=3):
     """
@@ -179,21 +167,13 @@ def build_inpainter(input_shape=(None, None, 3), downsample=1):
     with tf.name_scope("upsampler"):
         upsampler = InpainterUpsampler(bottleneck.output_shape[1:], downsample=downsample)
     
-    #for model in [downsampler, bottleneck, upsampler]:
-    #    for l in model.layers:
-    #        l._name = "inpainter_" + l.name
     
     inpt = tf.keras.layers.Input(input_shape)
     net = downsampler(inpt)
     net = bottleneck(net)
     net = upsampler(net)
-    #net = _compose(inpt, downsampler)
-    #net = _compose(net, bottleneck)
-    #net = _compose(net, upsampler)
-    #return tf.keras.Model(inpt, net) 
+
     model = tf.keras.Model(inpt, net)
-    #for l in model.layers:
-    #    l._name = "inpainter_" + l.name
     return model
 
 
@@ -239,20 +219,11 @@ def build_classifier(fcn=None, target_classes=1, downsample=1):
         head = ClassificationHead(fcn.output_shape[1:], target_classes, 
                                   downsample)
     
-    #for l in fcn.layers:
-    #    l._name = "classifier_" + l.name
-    #for l in head.layers:
-    #    l._name = "classifier_" + l.name
     
     inpt = tf.keras.layers.Input((None, None, 3))
-    #net = _compose(inpt, fcn)
-    #net = _compose(net, head)
     net = fcn(inpt)
     net = head(net)
-    #return tf.keras.Model(inpt, net)
     model = tf.keras.Model(inpt, net)
-    #for l in model.layers:
-    #    l._name = "classifier_" + l.name
     return model
 
 
@@ -272,21 +243,11 @@ def build_mask_generator(fcn=None, target_classes=1, downsample=1):
     with tf.name_scope("maskgen_head"):
         head = MaskGeneratorHead(fcn.output_shape[1:], downsample, target_classes)
     
-    #for l in fcn.layers:
-    #    l._name = "maskgen_" + l.name
-        
-    #for l in head.layers:
-    #    l._name = "maskgen_" + l.name
-    
+
     inpt = tf.keras.layers.Input((None, None, 3))
-    #net = _compose(inpt, fcn)
-    #net = _compose(net, head)
     net = fcn(inpt)
     net = head(net)
-    #return tf.keras.Model(inpt, net)
     model = tf.keras.Model(inpt, net)
-    #for l in model.layers:
-    #    l._name = "maskgen_" + l.name
     return model
 
 
@@ -348,12 +309,6 @@ def build_discriminator(input_shape=(None, None, 3), downsample=1):
     inpt = tf.keras.layers.Input(input_shape)
     with tf.name_scope("discriminator"):
         disc = LocalDiscriminator(input_shape, downsample)
-    #for l in disc.layers:
-    #    l._name = "discriminator_" + l.name
-    #net = _compose(inpt, disc)
     net = disc(inpt)
-    #return tf.keras.Model(inpt, net)
     model = tf.keras.Model(inpt, net)
-    #for l in model.layers:
-    #    l._name = "discriminator_" + l.name
     return model
