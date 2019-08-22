@@ -48,3 +48,60 @@ def least_squares_gan_loss(y_true, y_pred):
         inverse_mask*K.square(y_pred), axis=[1,2,3]
     )
     return masked_area_loss/mask_sum + unmasked_area_loss/inv_mask_sum
+
+
+def compute_gram_matrix(x):
+    """
+    Input a (batch_size, H, W, C) tensor; return a (C,C)
+    Gram matrix normalized using equation 4 from Gatys'
+    paper (4 * (H^2) * (W^2)) (since this is computed per matrix, 
+    and style loss uses squared-error loss, we compute 2*H*W here)
+    """
+    assert K.ndim(x) == 4
+    N, H, W, C = x.get_shape().as_list()
+    # flatten to a matrix
+    x_flat = tf.reshape(x, [-1, C])
+    # compute matrix of kernel correlations and normalize
+    gram = tf.matmul(x_flat, x_flat, transpose_a=True)
+    norm = 2*H*W 
+    return gram/norm
+
+def build_style_model():
+    """
+    Macro to generate a Keras model for computing the style
+    representations of an image.
+    """
+    # load VGG19 and reform as a model that outputs the 
+    # conv blocks used for style transfer
+    vgg = tf.keras.applications.VGG19(weights="imagenet", include_top=False)
+    output_dict = dict([(l.name, l.output) for l in vgg.layers])
+    feature_layers = ['block1_conv1', 'block2_conv1',
+                  'block3_conv1', 'block4_conv1',
+                  'block5_conv1']
+    style_model = tf.keras.Model(vgg.inputs, [output_dict[l] for l in feature_layers])
+    return style_model
+
+def compute_style_loss(x, y, style_model):
+    """
+    Input two batches of images and a style model and
+    compute the squared-error loss between the style representations'
+    Gram matrices.
+    
+    :x: (N, H, W, C) batch of images
+    :y: (N, H, W, C) batch of images to compare with x
+    :style_model: a Keras model that outputs a list of style representations
+    """
+    # each of these will be a list of rank-4 tensors
+    x_style = style_model(x)
+    y_style = style_model(y)
+    
+    loss = 0
+    # for each layer
+    for a,b in zip(x_style, y_style):
+        # compute gram matrices
+        x_gram = compute_gram_matrix(a)
+        y_gram = compute_gram_matrix(b)
+        # record loss
+        loss += K.sum(K.square(x_gram - y_gram))
+        
+    return loss

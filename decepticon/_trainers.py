@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
 import os
-from decepticon._losses import least_squares_gan_loss
+from decepticon._losses import least_squares_gan_loss, build_style_model, compute_style_loss
 from decepticon._loaders import image_loader_dataset
 
 
@@ -63,7 +63,7 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
 @tf.function
 def inpainter_training_step(opt, inpt_img, mask, inpainter,
                             disc, recon_weight=100,
-                            disc_weight=2):
+                            disc_weight=2, style_weight=0, style_model=None):
     """
     TensorFlow function to perform one training step on the inpainter.
     
@@ -76,6 +76,8 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
     :disc: discriminator model
     :recon_weight: reconstruction loss weight
     :disc_weight: discriminator loss weight
+    :style_weight: weight for style loss
+    :style_model: model to use for computing style representation
     
     Returns
     :recon_loss: reconstruction loss for the batch
@@ -97,17 +99,24 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
         # note that outputs will be (batch_size, X, Y, 1)
         sigmoid_out = disc(y)
     
-        # compute losses
+        # compute losses. style loss only computed if weight is nonzero
         recon_loss = tf.reduce_mean(tf.abs(y - inpt_img))
         disc_loss = tf.reduce_mean(-1*tf.math.log(1 - sigmoid_out + K.epsilon()))
-        loss = recon_weight*recon_loss + disc_weight*disc_loss
+        
+        if (style_weight > 0)&(style_model is not None):
+            style_loss = compute_style_loss(inpt_img, y, style_model)
+        else:
+            style_loss = 0
+        
+        loss = recon_weight*recon_loss + disc_weight*disc_loss + \
+                style_weight*style_loss
         
     # compute gradients and update
     variables = inpainter.trainable_variables
     gradients = tape.gradient(loss, variables)
     opt.apply_gradients(zip(gradients, variables))
     
-    return recon_loss, disc_loss, loss
+    return recon_loss, disc_loss, style_loss, loss
 
 
 
@@ -171,7 +180,7 @@ class Trainer(object):
                  mask_trainer_dataset, inpainter_dataset, lr=1e-4,
                  steps_per_epoch=100, batch_size=64,
                  class_loss_weight=1, exponential_loss_weight=0.1,
-                 reconstruction_loss=100, disc_loss=2,
+                 reconstruction_weight=100, disc_weight=2, style_weight=0,
                  eval_pos=None, logdir=None, save_models=True):
         """
         :mask_generator: keras mask generator model
@@ -182,8 +191,9 @@ class Trainer(object):
         :inpainter_dataset: tf.data.Dataset object generating negative example batches
         :class_loss_weight: for mask generator, weight on classification loss
         :exponential_loss_weight: for mask generator, weight on exponential loss.
-        :reconstruction_loss: weight for L1 reconstruction loss
-        :disc_loss: weight for GAN loss on inpainter
+        :reconstruction_weight: weight for L1 reconstruction loss
+        :disc_weight: weight for GAN loss on inpainter
+        :style_weight: weight for neural style loss on inpainter
         :eval_pos: batch of positive images for evaluation
         :logdir: where to save tensorboard logs
         :save_models: whether to save each component model at the end of
@@ -196,8 +206,14 @@ class Trainer(object):
         self._save_models = save_models
         self.weights = {"class":class_loss_weight,
                         "exp":exponential_loss_weight,
-                        "recon":reconstruction_loss,
-                        "disc":disc_loss}
+                        "recon":reconstruction_weight,
+                        "disc":disc_weight,
+                        "style":style_weight}
+        if style_weight > 0:
+            self._style_model = build_style_model()
+        else:
+            self._style_model = None
+        
         if logdir is not None:
             self._summary_writer = tf.contrib.summary.create_file_writer(logdir,
                                             flush_millis=10000)
@@ -258,10 +274,11 @@ class Trainer(object):
                 # every other step: train inpainter
                 if e % 2 == 0:
                     # run training step
-                    recon_loss, disc_loss, inpaint_loss = inpainter_training_step(
+                    recon_loss, disc_loss, style_loss, inpaint_loss = inpainter_training_step(
                             self._optimizers["inpainter"], x, mask, 
                             self.inpainter, self.discriminator, 
-                            self.weights["recon"], self.weights["disc"])
+                            self.weights["recon"], self.weights["disc"],
+                            self.weights["style"], self._style_model)
                 # alternating step train discriminator
                 else:
                     # run training step
@@ -280,7 +297,8 @@ class Trainer(object):
                                       step=self.global_step)
                 tf.contrib.summary.scalar("mask_generator_exponential_loss", exp_loss,
                                       step=self.global_step)
-
+                tf.contrib.summary.scalar("inpainter_style_loss", style_loss, 
+                                      step=self.global_step)
                 tf.contrib.summary.scalar("inpainter_total_loss", inpaint_loss, 
                                       step=self.global_step)
                 tf.contrib.summary.scalar("inpainter_reconstruction_L1_loss", recon_loss,
@@ -338,7 +356,7 @@ def build_image_file_trainer(positive_filepaths, negative_filepaths,
                              discriminator=None,
                              lr=1e-4, steps_per_epoch=100, batch_size=64,
                              class_loss_weight=1, exponential_loss_weight=0.1,
-                             reconstruction_loss=100, disc_loss=2,
+                             reconstruction_weight=100, disc_weight=2,
                              logdir=None, save_models=True,
                              num_parallel_calls=2):
         """
@@ -354,8 +372,8 @@ def build_image_file_trainer(positive_filepaths, negative_filepaths,
         :inpainter_dataset: tf.data.Dataset object generating negative example batches
         :class_loss_weight: for mask generator, weight on classification loss
         :exponential_loss_weight: for mask generator, weight on exponential loss.
-        :reconstruction_loss: weight for L1 reconstruction loss
-        :disc_loss: weight for GAN loss on inpainter
+        :reconstruction_weight: weight for L1 reconstruction loss
+        :disc_weight: weight for GAN loss on inpainter
         :logdir: where to save tensorboard logs
         :save_models: whether to save each component model at the end of
                 every epoch
@@ -385,7 +403,7 @@ def build_image_file_trainer(positive_filepaths, negative_filepaths,
                  ds_pos, ds_neg, lr=lr, steps_per_epoch=steps_per_epoch, 
                  batch_size=batch_size, class_loss_weight=class_loss_weight,
                  exponential_loss_weight=exponential_loss_weight,
-                 reconstruction_loss=reconstruction_loss, 
-                 disc_loss=disc_loss, eval_pos=eval_pos, 
+                 reconstruction_weight=reconstruction_weight, 
+                 disc_weight=disc_weight, eval_pos=eval_pos, 
                  logdir=logdir, save_models=save_models)
         
