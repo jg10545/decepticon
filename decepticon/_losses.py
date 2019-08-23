@@ -56,6 +56,9 @@ def compute_gram_matrix(x):
     Gram matrix normalized using equation 4 from Gatys'
     paper (4 * (H^2) * (W^2)) (since this is computed per matrix, 
     and style loss uses squared-error loss, we compute 2*H*W here)
+    
+    I've also scaled by N^2 since we're computing this for an
+    entire batch
     """
     assert K.ndim(x) == 4
     N, H, W, C = x.get_shape().as_list()
@@ -63,7 +66,7 @@ def compute_gram_matrix(x):
     x_flat = tf.reshape(x, [-1, C])
     # compute matrix of kernel correlations and normalize
     gram = tf.matmul(x_flat, x_flat, transpose_a=True)
-    norm = 2*H*W 
+    norm = 2*H*W*(N**2) 
     return gram/norm
 
 def build_style_model():
@@ -87,6 +90,11 @@ def compute_style_loss(x, y, style_model):
     compute the squared-error loss between the style representations'
     Gram matrices.
     
+    Note that we're using K.mean() instead of K.sum() (like the style loss
+    implementation on the Keras website). Since the style loss is only
+    one term out of several in the loss function, it's more important that 
+    the natural values be on the unit scale to compare with the others.
+    
     :x: (N, H, W, C) batch of images
     :y: (N, H, W, C) batch of images to compare with x
     :style_model: a Keras model that outputs a list of style representations
@@ -102,6 +110,6 @@ def compute_style_loss(x, y, style_model):
         x_gram = compute_gram_matrix(a)
         y_gram = compute_gram_matrix(b)
         # record loss
-        loss += K.sum(K.square(x_gram - y_gram))
+        loss += K.mean(K.square(x_gram - y_gram)) 
         
     return loss

@@ -338,11 +338,20 @@ class Trainer(object):
         concatenated = np.concatenate([x_pos, rgb_masks, 
                                        predicted_inpaints, reconstructed],
                                 axis=2)
+        # also, run the classifier on the reconstructed images and
+        # see whether it thinks an object is present
+        cls_outs = self.classifier.predict(reconstructed)
+        object_score = 1 - cls_outs[:,0]
+        
+        
         # record everything
         with tf.contrib.summary.always_record_summaries():
             tf.contrib.summary.image("input__mask__inpainted__reconstructed", 
                              concatenated, max_images=5,
                              step=self.global_step)
+            tf.contrib.summary.histogram("reconstructed_classifier_score", 
+                                         object_score,
+                                         step=self.global_step)
    
 
 
