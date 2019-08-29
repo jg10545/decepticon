@@ -40,7 +40,8 @@ def modified_vgg19(weights="imagenet"):
     
     inpt = tf.keras.layers.Input((None, None, 3))
     net = inpt
-    for l in fcn_orig.layers:
+    # layer 0 is an input layer
+    for l in fcn_orig.layers[1:]:
         if l.name not in ["block3_pool", "block4_pool", "block5_pool"]:
             net = l(net)
     return tf.keras.Model(inpt, net)
