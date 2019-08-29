@@ -11,19 +11,24 @@ import tensorflow as tf
 
 from decepticon._layers import InstanceNormalizationLayer
 
+norm_functions = {True:InstanceNormalizationLayer, False:tf.keras.layers.BatchNormalization}
     
-def ResidualBlock(filters, kernel_size=3):
+def ResidualBlock(filters, kernel_size=3, instance_norm=True):
     """
     Residual block as described in Choi et al's StarGAN paper
     """
+    norm = norm_functions[instance_norm]
+    
     inpt = tf.keras.layers.Input((None, None, filters))
     net = tf.keras.layers.Conv2D(filters, kernel_size,
                                            padding="same")(inpt)
-    net =  InstanceNormalizationLayer()(net)
+    net =  norm()(net)
+    #net =  InstanceNormalizationLayer()(net)
     net = tf.keras.layers.Activation("relu")(net)
     net = tf.keras.layers.Conv2D(filters, kernel_size,
                                            padding="same")(net)
-    net =  InstanceNormalizationLayer()(net)
+    net = norm()(net)
+    #net =  InstanceNormalizationLayer()(net)
     net = tf.keras.layers.Activation("relu")(net)
     net = tf.keras.layers.Add()([inpt, net])
 
@@ -49,15 +54,17 @@ def modified_vgg19(weights="imagenet"):
 
 
 
-def MaskGeneratorHead(input_shape=(None, None, 512), downsample=1, target_classes=1):
+def MaskGeneratorHead(input_shape=(None, None, 512), downsample=1, target_classes=1,
+                      instance_norm=True):
     """
     Output layers for the Mask Generator from section 2 of
     Shetty et al's supplementary material
     
-    :target_classes: 20 in paper
     :downsample: reduce the number of kernels in each layer
         by this factor
-    """
+    :target_classes: 20 in paper
+    :instance_norm: whether to use InstanceNorm or BatchNorm
+    """    
     if target_classes == 1:
         k = 1
     else:
@@ -67,15 +74,15 @@ def MaskGeneratorHead(input_shape=(None, None, 512), downsample=1, target_classe
     net = tf.keras.layers.Conv2D(int(512/downsample), kernel_size=3,
                                   padding="same")(inpt)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
-    net = ResidualBlock(int(512/downsample))(net)
+    net = ResidualBlock(int(512/downsample), instance_norm=instance_norm)(net)
     net = tf.keras.layers.Conv2D(int(256/downsample), kernel_size=3,
                                   padding="same")(net)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
-    net = ResidualBlock(int(256/downsample))(net)
+    net = ResidualBlock(int(256/downsample), instance_norm=instance_norm)(net)
     net = tf.keras.layers.Conv2D(int(128/downsample), kernel_size=3,
                                   padding="same")(net)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
-    net = ResidualBlock(int(128/downsample))(net)
+    net = ResidualBlock(int(128/downsample), instance_norm=instance_norm)(net)
     net = tf.keras.layers.Conv2DTranspose(k, kernel_size=7,
                             strides=4,
                             activation=tf.keras.activations.sigmoid,
@@ -85,68 +92,80 @@ def MaskGeneratorHead(input_shape=(None, None, 512), downsample=1, target_classe
 
 
 
-def InpainterDownsampler(input_shape=(None, None, 3), downsample=1):
+def InpainterDownsampler(input_shape=(None, None, 3), downsample=1, instance_norm=True):
     """
     note- final layer changed from paper from 512 to 256
     to align with residual layers for bottleneck
     """
+    norm = norm_functions[instance_norm]
+    
     inpt = tf.keras.layers.Input(input_shape)
     net = tf.keras.layers.Conv2D(int(64/downsample), kernel_size=4,
                                   padding="same")(inpt)
-    net = InstanceNormalizationLayer()(net)
+    net =  norm()(net)
+    #net = InstanceNormalizationLayer()(net)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
     net = tf.keras.layers.Conv2D(int(128/downsample), kernel_size=4,
                                   strides=2, padding="same")(net)
-    net = InstanceNormalizationLayer()(net)
+    net =  norm()(net)
+    #net = InstanceNormalizationLayer()(net)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
     net = tf.keras.layers.Conv2D(int(256/downsample), kernel_size=4,
                                   strides=2, padding="same")(net)
-    net = InstanceNormalizationLayer()(net)
+    net =  norm()(net)
+    #net = InstanceNormalizationLayer()(net)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
     net = tf.keras.layers.Conv2D(int(256/downsample), kernel_size=4,
                                   strides=2, padding="same")(net)
-    net = InstanceNormalizationLayer()(net)
+    net =  norm()(net)
+    #net = InstanceNormalizationLayer()(net)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
     
     return tf.keras.Model(inpt, net)
 
 
 
-def InpainterBottleneck(input_shape=(None, None, 256), downsample=1, num_residuals=6):
+def InpainterBottleneck(input_shape=(None, None, 256), downsample=1, num_residuals=6,
+                        instance_norm=True):
     """
     
     """ 
     inpt = tf.keras.layers.Input(input_shape)
     net = inpt
     for _ in range(num_residuals):
-        net = ResidualBlock(int(256/downsample))(net)
+        net = ResidualBlock(int(256/downsample), instance_norm=instance_norm)(net)
     
     return tf.keras.Model(inpt, net)
         
     
   
-def InpainterUpsampler(input_shape=(None, None, 256), downsample=1):
+def InpainterUpsampler(input_shape=(None, None, 256), downsample=1, instance_norm=True):
     """
     
     """
+    norm = norm_functions[instance_norm]
+    
     inpt = tf.keras.layers.Input(input_shape)
     net = tf.keras.layers.UpSampling2D(size=2, 
                                          interpolation="bilinear")(inpt)
     net = tf.keras.layers.Conv2D(int(256/downsample), kernel_size=3,
                                   padding="same")(net)
-    net = InstanceNormalizationLayer()(net)
+    net =  norm()(net)
+    #net = InstanceNormalizationLayer()(net)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
     net = tf.keras.layers.UpSampling2D(size=2, 
                                          interpolation="bilinear")(net)
     net = tf.keras.layers.Conv2D(int(128/downsample), kernel_size=3,
                                   padding="same")(net)
-    net = InstanceNormalizationLayer()(net)
+    net =  norm()(net)
+    #net = InstanceNormalizationLayer()(net)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
     net = tf.keras.layers.UpSampling2D(size=2, 
                                          interpolation="bilinear")(net)
     net = tf.keras.layers.Conv2D(int(64/downsample), kernel_size=3,
                                   padding="same")(net)
-    net = InstanceNormalizationLayer()(net)
+    net =  norm()(net)
+    #net = InstanceNormalizationLayer()(net)
     net = tf.keras.layers.LeakyReLU(0.1)(net)
     net = tf.keras.layers.Conv2D(3, kernel_size=7,
                             strides=1,
@@ -155,18 +174,21 @@ def InpainterUpsampler(input_shape=(None, None, 256), downsample=1):
     return tf.keras.Model(inpt, net)
 
 
-def build_inpainter(input_shape=(None, None, 3), downsample=1):
+def build_inpainter(input_shape=(None, None, 3), downsample=1, instance_norm=True):
     """
     Build the full inpainting network
     
     :downsample: reduce number of kernels by this factor
     """
     with tf.name_scope("downsampler"):
-        downsampler = InpainterDownsampler(input_shape, downsample=downsample)
+        downsampler = InpainterDownsampler(input_shape, downsample=downsample,
+                                           instance_norm=instance_norm)
     with tf.name_scope("bottleneck"):
-        bottleneck = InpainterBottleneck(downsampler.output_shape[1:], downsample=downsample)
+        bottleneck = InpainterBottleneck(downsampler.output_shape[1:], downsample=downsample,
+                                         instance_norm=instance_norm)
     with tf.name_scope("upsampler"):
-        upsampler = InpainterUpsampler(bottleneck.output_shape[1:], downsample=downsample)
+        upsampler = InpainterUpsampler(bottleneck.output_shape[1:], downsample=downsample,
+                                       instance_norm=instance_norm)
     
     
     inpt = tf.keras.layers.Input(input_shape)
@@ -229,7 +251,7 @@ def build_classifier(fcn=None, target_classes=1, downsample=1):
 
 
 
-def build_mask_generator(fcn=None, target_classes=1, downsample=1):
+def build_mask_generator(fcn=None, target_classes=1, downsample=1, instance_norm=True):
     """
     Build the mask generator
     
@@ -242,7 +264,8 @@ def build_mask_generator(fcn=None, target_classes=1, downsample=1):
         with tf.name_scope("maskgen_fcn"):
             fcn = modified_vgg19()
     with tf.name_scope("maskgen_head"):
-        head = MaskGeneratorHead(fcn.output_shape[1:], downsample, target_classes)
+        head = MaskGeneratorHead(fcn.output_shape[1:], downsample, target_classes,
+                                 instance_norm=instance_norm)
     
 
     inpt = tf.keras.layers.Input((None, None, 3))
