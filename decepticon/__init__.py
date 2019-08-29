@@ -10,3 +10,4 @@ __version__ = '0.1.0'
 from decepticon._models import build_inpainter, build_classifier, build_mask_generator, build_discriminator
 from decepticon._synthetic import build_synthetic_dataset, build_inpainter_dataset
 from decepticon._trainers import Trainer, build_image_file_trainer
+import decepticon.loaders

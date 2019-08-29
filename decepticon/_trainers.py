@@ -4,13 +4,14 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 import os
 from decepticon._losses import least_squares_gan_loss, build_style_model, compute_style_loss
-from decepticon._loaders import image_loader_dataset
+from decepticon.loaders import image_loader_dataset
 
 
 
 @tf.function
 def maskgen_training_step(opt, inpt_img, maskgen, classifier, 
-                          inpainter, cls_weight=1, exp_weight=0.1):
+                          inpainter, cls_weight=1, exp_weight=0.1,
+                          clip=10):
     """
     TensorFlow function to perform one training step on the mask generator.
     
@@ -53,6 +54,10 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     # compute gradients and update
     variables = maskgen.trainable_variables
     gradients = tape.gradient(loss, variables)
+    if clip > 0:
+        #gradients = [tf.clip_by_value(g, -1*clip_by_value, clip_by_value) 
+        #                for g in gradients]
+        gradients = [tf.clip_by_norm(g, clip) for g in gradients]
     opt.apply_gradients(zip(gradients, variables))
     
     return cls_loss, exp_loss, loss, mask
@@ -63,7 +68,8 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
 @tf.function
 def inpainter_training_step(opt, inpt_img, mask, inpainter,
                             disc, recon_weight=100,
-                            disc_weight=2, style_weight=0, style_model=None):
+                            disc_weight=2, style_weight=0, style_model=None,
+                            clip=10):
     """
     TensorFlow function to perform one training step on the inpainter.
     
@@ -114,6 +120,8 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
     # compute gradients and update
     variables = inpainter.trainable_variables
     gradients = tape.gradient(loss, variables)
+    if clip > 0:
+        gradients = [tf.clip_by_norm(g, clip) for g in gradients]
     opt.apply_gradients(zip(gradients, variables))
     
     return recon_loss, disc_loss, style_loss, loss
@@ -124,7 +132,7 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
 
 @tf.function
 def discriminator_training_step(opt, inpt_img, mask, inpainter,
-                            disc):
+                            disc, clip=10):
     """
     TensorFlow function to perform one training step on the discriminator.
     
@@ -162,6 +170,8 @@ def discriminator_training_step(opt, inpt_img, mask, inpainter,
     # compute gradients and update
     variables = disc.trainable_variables
     gradients = tape.gradient(loss, variables)
+    if clip > 0:
+        gradients = [tf.clip_by_norm(g, clip) for g in gradients]
     opt.apply_gradients(zip(gradients, variables))
     
     return loss
@@ -181,7 +191,7 @@ class Trainer(object):
                  steps_per_epoch=100, batch_size=64,
                  class_loss_weight=1, exponential_loss_weight=0.1,
                  reconstruction_weight=100, disc_weight=2, style_weight=0,
-                 eval_pos=None, logdir=None, save_models=True):
+                 eval_pos=None, logdir=None, save_models=True, clip=0):
         """
         :mask_generator: keras mask generator model
         :classifier: pretrained convnet for classifying images
@@ -197,7 +207,8 @@ class Trainer(object):
         :eval_pos: batch of positive images for evaluation
         :logdir: where to save tensorboard logs
         :save_models: whether to save each component model at the end of
-                every epoch
+                every epoch,
+        :clip: gradient clipping (0 to diable)
         """
         self.global_step = tf.compat.v1.train.get_or_create_global_step()
         assert tf.executing_eagerly(), "eager execution must be enabled first"
@@ -209,6 +220,7 @@ class Trainer(object):
                         "recon":reconstruction_weight,
                         "disc":disc_weight,
                         "style":style_weight}
+        self._clip = clip
         if style_weight > 0:
             self._style_model = build_style_model()
         else:
@@ -234,6 +246,17 @@ class Trainer(object):
         self._optimizers = {
                 x:tf.keras.optimizers.Adam(lr) for x in ["mask", "inpainter", 
                                           "discriminator"]}
+        self._assemble_full_model()
+                
+    def _assemble_full_model(self):
+        inpt = tf.keras.layers.Input((None, None, 3))
+        mask = self.maskgen(inpt)
+        inverse_mask = tf.keras.layers.Lambda(lambda x: 1-x)(mask)
+        masked_im = tf.keras.layers.Multiply()([inpt, inverse_mask])
+        inpainted = self.inpainter(masked_im)
+        masked_inpainted = tf.keras.layers.Multiply()([inpainted, mask])
+        reconstructed = tf.keras.layers.Add()([masked_im, masked_inpainted])
+        self.full_model = tf.keras.Model(inpt, reconstructed)
         
         
     def fit(self, epochs=1):
@@ -255,7 +278,8 @@ class Trainer(object):
                 cls_loss, exp_loss, mask_loss, mask = maskgen_training_step(
                         self._optimizers["mask"], x, self.maskgen, 
                         self.classifier, self.inpainter,
-                        self.weights["class"], self.weights["exp"])
+                        self.weights["class"], self.weights["exp"],
+                        clip=self._clip)
                 # record batch of masks to buffer
                 mask_buffer.append(mask)
                 
@@ -278,13 +302,15 @@ class Trainer(object):
                             self._optimizers["inpainter"], x, mask, 
                             self.inpainter, self.discriminator, 
                             self.weights["recon"], self.weights["disc"],
-                            self.weights["style"], self._style_model)
+                            self.weights["style"], self._style_model,
+                            clip=self._clip)
                 # alternating step train discriminator
                 else:
                     # run training step
                     disc_loss = discriminator_training_step(
                             self._optimizers["discriminator"],
-                            x, mask, self.inpainter, self.discriminator)
+                            x, mask, self.inpainter, self.discriminator,
+                            clip=self._clip)
                 if e >= self._steps_per_epoch:
                     mask_buffer = np.concatenate(mask_buffer, axis=0)
                     break
@@ -342,6 +368,10 @@ class Trainer(object):
         # see whether it thinks an object is present
         cls_outs = self.classifier.predict(reconstructed)
         object_score = 1 - cls_outs[:,0]
+        # while we're at it let's see about testing the discriminator too
+        dsc_outs = self.discriminator.predict(reconstructed)
+        dsc_mask = dsc_outs[predicted_masks.astype(bool)]
+        dsc_unmask = dsc_outs[(1-predicted_masks).astype(bool)]
         
         
         # record everything
@@ -352,6 +382,14 @@ class Trainer(object):
             tf.contrib.summary.histogram("reconstructed_classifier_score", 
                                          object_score,
                                          step=self.global_step)
+            tf.contrib.summary.histogram("discriminator_score_real", 
+                                         dsc_unmask,
+                                         step=self.global_step)
+            tf.contrib.summary.histogram("discriminator_score_fake", 
+                                         dsc_mask,
+                                         step=self.global_step)
+   
+   
    
 
 
