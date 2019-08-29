@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import tensorflow as tf
-from decepticon._loaders import image_loader_dataset
+from decepticon.loaders import image_loader_dataset
 
 tf.enable_eager_execution()
 
