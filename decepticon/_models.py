@@ -13,7 +13,7 @@ from decepticon._layers import InstanceNormalizationLayer
 
 norm_functions = {True:InstanceNormalizationLayer, False:tf.keras.layers.BatchNormalization}
     
-def ResidualBlock(filters, kernel_size=3, instance_norm=True):
+def ResidualBlock(filters, kernel_size=3, instance_norm=False):
     """
     Residual block as described in Choi et al's StarGAN paper
     """
@@ -55,7 +55,7 @@ def modified_vgg19(weights="imagenet"):
 
 
 def MaskGeneratorHead(input_shape=(None, None, 512), downsample=1, target_classes=1,
-                      instance_norm=True):
+                      instance_norm=False):
     """
     Output layers for the Mask Generator from section 2 of
     Shetty et al's supplementary material
@@ -92,7 +92,7 @@ def MaskGeneratorHead(input_shape=(None, None, 512), downsample=1, target_classe
 
 
 
-def InpainterDownsampler(input_shape=(None, None, 3), downsample=1, instance_norm=True):
+def InpainterDownsampler(input_shape=(None, None, 3), downsample=1, instance_norm=False):
     """
     note- final layer changed from paper from 512 to 256
     to align with residual layers for bottleneck
@@ -126,7 +126,7 @@ def InpainterDownsampler(input_shape=(None, None, 3), downsample=1, instance_nor
 
 
 def InpainterBottleneck(input_shape=(None, None, 256), downsample=1, num_residuals=6,
-                        instance_norm=True):
+                        instance_norm=False):
     """
     
     """ 
@@ -174,7 +174,7 @@ def InpainterUpsampler(input_shape=(None, None, 256), downsample=1, instance_nor
     return tf.keras.Model(inpt, net)
 
 
-def build_inpainter(input_shape=(None, None, 3), downsample=1, instance_norm=True):
+def build_inpainter(input_shape=(None, None, 3), downsample=1, instance_norm=False):
     """
     Build the full inpainting network
     
@@ -251,7 +251,7 @@ def build_classifier(fcn=None, target_classes=1, downsample=1):
 
 
 
-def build_mask_generator(fcn=None, target_classes=1, downsample=1, instance_norm=True):
+def build_mask_generator(fcn=None, target_classes=1, downsample=1, instance_norm=False):
     """
     Build the mask generator
     
