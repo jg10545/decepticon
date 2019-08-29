@@ -246,6 +246,7 @@ class Trainer(object):
         self._optimizers = {
                 x:tf.keras.optimizers.Adam(lr) for x in ["mask", "inpainter", 
                                           "discriminator"]}
+        self._assemble_full_model()
                 
     def _assemble_full_model(self):
         inpt = tf.keras.layers.Input((None, None, 3))
