@@ -2,6 +2,8 @@
 decepticon
 ==========
 
+teaching machines to lie
+
 
 .. image:: https://img.shields.io/pypi/v/decepticon.svg
         :target: https://pypi.python.org/pypi/decepticon
@@ -14,13 +16,35 @@ decepticon
         :alt: Documentation Status
 
 
-
-
-teaching machines to lie
-
-
 * Free software: MIT license
 * Documentation: https://decepticon.readthedocs.io.
+
+This repository contains a tensorflow/keras implementation of the elegant object removal model described in `Adversarial Scene Editing: Automatic Object Removal from Weak Supervision <https://arxiv.org/abs/1806.01911>`_ by Shetty, Fritz, and Schiele.
+
+
+Usage
+-----
+
+**Data**
+
+**Models**
+
+Shetty *et al*'s model has several components; `decepticon` expects a `keras` Model object for each:
+
++--------+-----------+-----+------+----+
+| Component | Description | Input | Output | Code |
++========+===========+=====+======+====+
+| Component | Description | Input | Output | Code |
++--------+-----------+-----+------+----+
+
+| **mask generator** | fully-convolutional network that generates a mask from an input image | ``(None, None, None, 3)`` | ``(None, None, None, 1)`` | ``decepticon.build_mask_generator()`` |
++--------+-----------+-----+------+----+
+
+
+
+* **mask generator:** a fully-convolutional network that inputs a ``(None, None, None, 3)`` tensor containing a batch of images and returns a ``(None, None, None, 1)`` tensor containing a batch of masks. Use ``decepticon.build_mask_generator()`` to initialize the model from the paper.
+* **classifier:** a convnet that inputs a ``(None, None, None, 3)`` tensor containing a batch of images and outputs
+
 
 
 Features
