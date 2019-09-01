@@ -1,6 +1,5 @@
-==========
-decepticon
-==========
+# decepticon
+
 
 teaching machines to lie
 
@@ -17,35 +16,32 @@ teaching machines to lie
 
 
 * Free software: MIT license
-* Documentation: https://decepticon.readthedocs.io.
 
-This repository contains a tensorflow/keras implementation of the elegant object removal model described in `Adversarial Scene Editing: Automatic Object Removal from Weak Supervision <https://arxiv.org/abs/1806.01911>`_ by Shetty, Fritz, and Schiele.
+This repository contains a `tensorflow`/`keras` implementation of the elegant object removal model described in [Adversarial Scene Editing: Automatic Object Removal from Weak Supervision](https://arxiv.org/abs/1806.01911) by Shetty, Fritz, and Schiele.
 
 
-Usage
------
-
-**Data**
-
-**Models**
-
-Shetty *et al*'s model has several components; `decepticon` expects a `keras` Model object for each:
-
-+--------+-----------+-----+------+----+
-| Component | Description | Input | Output | Code |
-+========+===========+=====+======+====+
-| Component | Description | Input | Output | Code |
-+--------+-----------+-----+------+----+
-
-| **mask generator** | fully-convolutional network that generates a mask from an input image | ``(None, None, None, 3)`` | ``(None, None, None, 1)`` | ``decepticon.build_mask_generator()`` |
-+--------+-----------+-----+------+----+
+## Usage
 
 
 
-* **mask generator:** a fully-convolutional network that inputs a ``(None, None, None, 3)`` tensor containing a batch of images and returns a ``(None, None, None, 1)`` tensor containing a batch of masks. Use ``decepticon.build_mask_generator()`` to initialize the model from the paper.
-* **classifier:** a convnet that inputs a ``(None, None, None, 3)`` tensor containing a batch of images and outputs
+### Data
+
+### Models
+
+Shetty *et al*'s model has several components; `decepticon` expects a `keras` Model object for each. You can reproduce the models from the paper or substitute your own so long as they have the correct inputs and outputs:
+
+| **Component** | **Description** | **Input Shape** | **Output Shape** | **Code** |
+| ---- | ---- | ---- | ---- | ---- |
+| **mask generator** | fully-convolutional network that generates a mask from an input image | `(None, None, None, 3)` | `(None, None, None, 1)` | `decepticon.build_mask_generator()` |
+| **classifier** | standard convolutional classifier that maps an image to a probability over categories| `(None, None, None, 3)` | `(None, num_classes+1)` | `decepticon.build_classifier()` |
+| **inpainter** | fully-convolutional network that inputs a partially-masked image and attempts to generate the original unmasked version (like a  denoising autoencoder or [context encoder](https://arxiv.org/abs/1604.07379))| `(None, None, None, 3)` | `(None, None, None, 3)` | `decepticon.build_inpainter()` |
+| **discriminator** | fully-convolutional network that inputs an image and makes a pixel-wise assessment about whether the image is real or fake| `(None, None, None, 3)` | `(None, None, None, 1)` | `decepticon.build_discriminator()` |
+| **mask discriminator** | *not yet implemented*|  |  | |
+
+If you're training on a consumer GPU you may run into memory limitations using the models from the paper and a reasonable batch size- if you pass the keyword argument `downsample=n` to any of the above functions, the number of filters in every hidden convolutional layer will be reduced by a factor of `n`.
 
 
+### Memory management
 
 Features
 --------
