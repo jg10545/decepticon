@@ -1,5 +1,6 @@
 # decepticon
 
+![](docs/logo.png)
 
 teaching machines to lie
 
@@ -41,7 +42,7 @@ Shetty *et al*'s model has several components; `decepticon` expects a `keras` Mo
 If you're training on a consumer GPU you may run into memory limitations using the models from the paper and a reasonable batch size- if you pass the keyword argument `downsample=n` to any of the above functions, the number of filters in every hidden convolutional layer will be reduced by a factor of `n`.
 
 
-### Memory management
+
 
 Features
 --------
@@ -51,7 +52,4 @@ Features
 Credits
 -------
 
-This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
-
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [audreyr/cookiecutter-pypackage](https://github.com/audreyr/cookiecutter-pypackage) project template.
