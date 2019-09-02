@@ -6,6 +6,7 @@ Development Lead
 ----------------
 
 * Joe Gezo <joe@gezo.net>
+* Robert Zamora
 
 Contributors
 ------------
