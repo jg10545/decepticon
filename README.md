@@ -40,11 +40,37 @@ If you're training on a consumer GPU you may run into memory limitations using t
 
 ### Pretraining
 
+#### Classifier
+
 The image classifier is trained on randomly-masked images:
 
 ```{python}
 # initialize a classifier
 classifier = decepticon.build_classifier()
+classifier.compile(tf.keras.optimizers.Adam(1e-3),
+                  loss=tf.keras.losses.sparse_categorical_crossentropy,
+                  metrics=["accuracy"])
+                  
+# create a tensorflow dataset that generates randomly-masked batches
+class_ds = decepticon.loaders.classifier_training_dataset(posfiles, negfiles, batch_size=32)
+# train with the normal keras API
+classifier.fit(class_ds, steps_per_epoch=250, epochs=5)
+```
+
+#### Inpainter
+
+We've had better luck with the end-to-end model if the inpainter is pretrained for a few epochs.
+
+```{python}
+# initialize an inpainter
+inpainter = decepticon.build_inpainter()
+inpainter.compile(tf.keras.optimizers.Adam(1e-3),
+                 loss=tf.keras.losses.mae)
+                 
+# pretrain only on randomly-masked negative patches, so it
+# never learns to inpaint the objects you want to remove
+inpaint_ds = decepticon.loaders.inpainter_training_dataset(negfiles)
+inpainter.fit(inpaint_ds, steps_per_epoch=250, epochs=5)
 ```
 
 
