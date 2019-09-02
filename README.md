@@ -1,30 +1,28 @@
-# decepticon
+![](docs/logo.png)
 
+# decepticon
 
 teaching machines to lie
 
 
-.. image:: https://img.shields.io/pypi/v/decepticon.svg
-        :target: https://pypi.python.org/pypi/decepticon
+![](https://img.shields.io/pypi/v/decepticon.svg)
 
-.. image:: https://img.shields.io/travis/jg10545/decepticon.svg
-        :target: https://travis-ci.org/jg10545/decepticon
+![](https://img.shields.io/travis/jg10545/decepticon.svg)
 
-.. image:: https://readthedocs.org/projects/decepticon/badge/?version=latest
-        :target: https://decepticon.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
+![](https://readthedocs.org/projects/decepticon/badge/?version=latest)
 
 
 * Free software: MIT license
 
-This repository contains a `tensorflow`/`keras` implementation of the elegant object removal model described in [Adversarial Scene Editing: Automatic Object Removal from Weak Supervision](https://arxiv.org/abs/1806.01911) by Shetty, Fritz, and Schiele.
+This repository contains a tensorflow/keras implementation of the elegant object removal model described in [Adversarial Scene Editing: Automatic Object Removal from Weak Supervision](https://arxiv.org/abs/1806.01911) by Shetty, Fritz, and Schiele.
 
+We've been testing using Python 3.6 and TensorFlow 1.14.
 
 ## Usage
 
-
-
 ### Data
+
+So far we've only tested single-class object removal. You'll need two lists of filepaths- one to image patches containing objects and one without. All patches should be prepared to the same size.
 
 ### Models
 
@@ -40,18 +38,42 @@ Shetty *et al*'s model has several components; `decepticon` expects a `keras` Mo
 
 If you're training on a consumer GPU you may run into memory limitations using the models from the paper and a reasonable batch size- if you pass the keyword argument `downsample=n` to any of the above functions, the number of filters in every hidden convolutional layer will be reduced by a factor of `n`.
 
+### Pretraining
 
-### Memory management
+#### Classifier
 
-Features
---------
+The image classifier is trained on randomly-masked images:
 
-* TODO
+```{python}
+# initialize a classifier
+classifier = decepticon.build_classifier()
+classifier.compile(tf.keras.optimizers.Adam(1e-3),
+                  loss=tf.keras.losses.sparse_categorical_crossentropy,
+                  metrics=["accuracy"])
+                  
+# create a tensorflow dataset that generates randomly-masked batches
+class_ds = decepticon.loaders.classifier_training_dataset(posfiles, negfiles, batch_size=32)
+# train with the normal keras API
+classifier.fit(class_ds, steps_per_epoch=250, epochs=5)
+```
 
-Credits
--------
+#### Inpainter
 
-This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
+We've had better luck with the end-to-end model if the inpainter is pretrained for a few epochs.
 
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+```{python}
+# initialize an inpainter
+inpainter = decepticon.build_inpainter()
+inpainter.compile(tf.keras.optimizers.Adam(1e-3),
+                 loss=tf.keras.losses.mae)
+                 
+# pretrain only on randomly-masked negative patches, so it
+# never learns to inpaint the objects you want to remove
+inpaint_ds = decepticon.loaders.inpainter_training_dataset(negfiles)
+inpainter.fit(inpaint_ds, steps_per_epoch=250, epochs=5)
+```
+
+
+## Credits
+
+This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [audreyr/cookiecutter-pypackage](https://github.com/audreyr/cookiecutter-pypackage) project template.
