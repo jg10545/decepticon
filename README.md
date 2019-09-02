@@ -73,6 +73,53 @@ inpaint_ds = decepticon.loaders.inpainter_training_dataset(negfiles)
 inpainter.fit(inpaint_ds, steps_per_epoch=250, epochs=5)
 ```
 
+### Training
+
+The `Trainer` class manages the alternating-epoch (mask generator vs inpainter) and alternating-batch (inpainter and discriminator) training.
+
+```{python}
+# initialize Keras models for mask generator and discriminator
+maskgen = decepticon.build_mask_generator()
+disc = decepticon.build_discriminator()
+
+# pass the model components and lists of file paths to
+# a trainer function. also set training parameters and
+# weights for all terms in the loss function here.
+trainer = decepticon.build_image_file_trainer(posfiles, negfiles,
+                                   classifier, inpainter,
+                                    disc,maskgen,
+                                    steps_per_epoch=1000,
+                                    lr=1e-5,
+                                    logdir="/path/to/log/directory/",
+                                    batch_size=32,
+                                    exponential_loss_weight=1,
+                                    disc_weight=10,
+                                   )
+
+# run training loop
+trainer.fit(10)
+```
+
+### Monitoring in TensorBoard
+
+If a log directory is specified, models and TensorBoard logs will be saved there.
+
+All the terms in the loss function will be recorded as scalars:
+
+![](docs/tensorboard-l1-loss.png)
+
+Histograms will record classification and discriminator probabilities on reconstructed examples, to visualize how well the system is fooling them:
+
+![](docs/tensorboard-histogram.png)
+
+Images will record examples of raw images, mask generator and inpainter outputs for them, and the reconstructed image:
+
+![](docs/tensorboard-image.png)
+
+
+### Inference
+
+The end-to-end object removal network is stored as a Keras model in `trainer.full_model`; run inference using the normal `predict` interface.
 
 ## Credits
 
