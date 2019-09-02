@@ -1,31 +1,28 @@
-# decepticon
-
 ![](docs/logo.png)
+
+# decepticon
 
 teaching machines to lie
 
 
-.. image:: https://img.shields.io/pypi/v/decepticon.svg
-        :target: https://pypi.python.org/pypi/decepticon
+![](https://img.shields.io/pypi/v/decepticon.svg)
 
-.. image:: https://img.shields.io/travis/jg10545/decepticon.svg
-        :target: https://travis-ci.org/jg10545/decepticon
+![](https://img.shields.io/travis/jg10545/decepticon.svg)
 
-.. image:: https://readthedocs.org/projects/decepticon/badge/?version=latest
-        :target: https://decepticon.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
+![](https://readthedocs.org/projects/decepticon/badge/?version=latest)
 
 
 * Free software: MIT license
 
-This repository contains a `tensorflow`/`keras` implementation of the elegant object removal model described in [Adversarial Scene Editing: Automatic Object Removal from Weak Supervision](https://arxiv.org/abs/1806.01911) by Shetty, Fritz, and Schiele.
+This repository contains a tensorflow/keras implementation of the elegant object removal model described in [Adversarial Scene Editing: Automatic Object Removal from Weak Supervision](https://arxiv.org/abs/1806.01911) by Shetty, Fritz, and Schiele.
 
+We've been testing using Python 3.6 and TensorFlow 1.14.
 
 ## Usage
 
-
-
 ### Data
+
+So far we've only tested single-class object removal. You'll need two lists of filepaths- one to image patches containing objects and one without. All patches should be prepared to the same size.
 
 ### Models
 
@@ -41,15 +38,16 @@ Shetty *et al*'s model has several components; `decepticon` expects a `keras` Mo
 
 If you're training on a consumer GPU you may run into memory limitations using the models from the paper and a reasonable batch size- if you pass the keyword argument `downsample=n` to any of the above functions, the number of filters in every hidden convolutional layer will be reduced by a factor of `n`.
 
+### Pretraining
+
+The image classifier is trained on randomly-masked images:
+
+```{python}
+# initialize a classifier
+classifier = decepticon.build_classifier()
+```
 
 
-
-Features
---------
-
-* TODO
-
-Credits
--------
+## Credits
 
 This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [audreyr/cookiecutter-pypackage](https://github.com/audreyr/cookiecutter-pypackage) project template.
