@@ -54,7 +54,7 @@ def test_maskgen_training_step():
     
     
 def test_inpainter_training_step():
-    recon_loss, disc_loss, loss = inpainter_training_step(opt, input_img, mask,
+    recon_loss, disc_loss, style_loss, loss = inpainter_training_step(opt, input_img, mask,
                                             inpainter, discriminator)
     assert recon_loss.numpy().dtype == np.float32
     assert disc_loss.numpy().dtype == np.float32

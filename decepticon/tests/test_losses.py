@@ -4,6 +4,7 @@ tf.enable_eager_execution()
 
 
 from decepticon._losses import exponential_loss, least_squares_gan_loss
+from decepticon._losses import compute_gram_matrix, compute_style_loss
 
 
 
@@ -38,3 +39,22 @@ def test_gan_loss_one_pixel_wrong():
     one_spot_wrong_loss = one_spot_wrong_loss.numpy()
     assert one_spot_wrong_loss[0] == 0.5
     
+    
+def test_compute_gram_matrix_output_shape():
+    inpt = tf.constant(np.random.uniform(0, 1, size=(1,3,5,7)).astype(np.float32))
+    gram = compute_gram_matrix(inpt)
+    
+    assert gram.numpy().shape == (7,7)
+    
+    
+def test_compute_style_loss():
+    def _style_model(x):
+        return [x,x]
+    
+    inpt = tf.constant(np.random.uniform(0, 1, 
+                                         size=(1,3,5,7)).astype(np.float32))
+    loss = compute_style_loss(inpt, inpt, _style_model)
+    
+    loss = loss.numpy()
+    assert loss.size == 1
+    assert loss.dtype == np.float32
