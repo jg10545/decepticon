@@ -401,11 +401,12 @@ def build_image_file_trainer(positive_filepaths, negative_filepaths,
                              mask_generator=None, 
                              inpainter=None, 
                              discriminator=None,
-                             lr=1e-4, steps_per_epoch=100, batch_size=64,
+                             lr=1e-4, steps_per_epoch=None, batch_size=64,
                              class_loss_weight=1, exponential_loss_weight=0.1,
                              reconstruction_weight=100, disc_weight=2,
                              logdir=None, save_models=True,
-                             num_parallel_calls=2):
+                             num_parallel_calls=2,
+                             train_maskgen_on_all=False):
         """
         Macro to set up a trainer for image files
         
@@ -424,9 +425,19 @@ def build_image_file_trainer(positive_filepaths, negative_filepaths,
         :logdir: where to save tensorboard logs
         :save_models: whether to save each component model at the end of
                 every epoch
+        :train_maskgen_on_all: whether to train the mask generator on all
+                images instead of just positive ones
         """
+        if steps_per_epoch is None:
+            steps_per_epoch = np.floor(
+                (len(positive_filepaths)+len(negative_filepaths))/(2*batch_size))
         # build dataset loaders
-        ds_pos = image_loader_dataset(positive_filepaths, batch_size=batch_size,
+        if train_maskgen_on_all:
+            ds_pos = image_loader_dataset(positive_filepaths+negative_filepaths,
+                                          batch_size=batch_size,
+                                      num_parallel_calls=num_parallel_calls)
+        else:
+            ds_pos = image_loader_dataset(positive_filepaths, batch_size=batch_size,
                                       num_parallel_calls=num_parallel_calls)
         ds_neg = image_loader_dataset(positive_filepaths, batch_size=batch_size,
                                       num_parallel_calls=num_parallel_calls)
