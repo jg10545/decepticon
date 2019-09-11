@@ -38,65 +38,55 @@ Shetty *et al*'s model has several components; `decepticon` expects a `keras` Mo
 
 If you're training on a consumer GPU you may run into memory limitations using the models from the paper and a reasonable batch size- if you pass the keyword argument `downsample=n` to any of the above functions, the number of filters in every hidden convolutional layer will be reduced by a factor of `n`.
 
-### Pretraining
+### Training
+
+#### Initialize models
+
+Before starting, initialize your own custom models or the ones from the paper:
+
+```{python}
+classifier = decepticon.build_classifier()
+inpainter = decepticon.build_inpainter()
+maskgen = decepticon.build_mask_generator()
+disc = decepticon.build_discriminator()
+```
+
+#### Set up `Trainer` object
+
+The `decepticon.Trainer` class has convenience code for all the training steps- instantiate it with the initialized models, lists of paths to positive and negative image patches, hyperparameters, and a path to a log directory:
+
+```{python}
+trainer = decepticon.Trainer(maskgen, classifier,
+                             inpainter, disc,
+                             posfiles, negfiles,
+                             lr=1e-5, disc_weight=10,
+                             logdir="/path/to/log/directory/",
+                             batch_size=32,
+                             exponential_loss_weight=1
+                             )
+```
 
 #### Classifier
 
-The image classifier is trained on randomly-masked images:
+The image classifier is trained on randomly-masked images. You can use `decepticon.classifier_training_dataset()` to build a randomly-masked `tf.data.Dataset` object that you can use with the standard Keras `Model.fit()` API, or use `trainer.pretrain_classifier()`:
 
 ```{python}
-# initialize a classifier
-classifier = decepticon.build_classifier()
-classifier.compile(tf.keras.optimizers.Adam(1e-3),
-                  loss=tf.keras.losses.sparse_categorical_crossentropy,
-                  metrics=["accuracy"])
-                  
-# create a tensorflow dataset that generates randomly-masked batches
-class_ds = decepticon.loaders.classifier_training_dataset(posfiles, negfiles, batch_size=32)
-# train with the normal keras API
-classifier.fit(class_ds, steps_per_epoch=250, epochs=5)
+trainer.pretrain_classifier(epochs=10)
 ```
 
 #### Inpainter
 
-We've had better luck with the end-to-end model if the inpainter is pretrained for a few epochs.
+We've had better luck with the end-to-end model if the inpainter is pretrained for a few epochs. You can use `decepticon.loaders.inpainter_training_dataset()` to train the inpainter directly or use `trainer.pretrain_inpainter()`:
 
 ```{python}
-# initialize an inpainter
-inpainter = decepticon.build_inpainter()
-inpainter.compile(tf.keras.optimizers.Adam(1e-3),
-                 loss=tf.keras.losses.mae)
-                 
-# pretrain only on randomly-masked negative patches, so it
-# never learns to inpaint the objects you want to remove
-inpaint_ds = decepticon.loaders.inpainter_training_dataset(negfiles)
-inpainter.fit(inpaint_ds, steps_per_epoch=250, epochs=5)
+trainer.pretrain_inpainter(epochs=10)
 ```
 
 ### Training
 
-The `Trainer` class manages the alternating-epoch (mask generator vs inpainter) and alternating-batch (inpainter and discriminator) training.
+Finally, run the alternating-epoch (mask generator vs inpainter) and alternating-batch (inpainter and discriminator) training:
 
 ```{python}
-# initialize Keras models for mask generator and discriminator
-maskgen = decepticon.build_mask_generator()
-disc = decepticon.build_discriminator()
-
-# pass the model components and lists of file paths to
-# a trainer function. also set training parameters and
-# weights for all terms in the loss function here.
-trainer = decepticon.build_image_file_trainer(posfiles, negfiles,
-                                   classifier, inpainter,
-                                    disc,maskgen,
-                                    steps_per_epoch=1000,
-                                    lr=1e-5,
-                                    logdir="/path/to/log/directory/",
-                                    batch_size=32,
-                                    exponential_loss_weight=1,
-                                    disc_weight=10,
-                                   )
-
-# run training loop
 trainer.fit(10)
 ```
 
