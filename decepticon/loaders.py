@@ -111,7 +111,7 @@ def classifier_training_dataset(pos_files, neg_files, imshape=(80,80),
     # generate random masks
     maskgen_ds = tf.data.Dataset.from_generator(_random_mask_generator, 
                                             tf.float32,
-                                            (80,80,1))
+                                            (imshape[0],imshape[1],1))
     # randomly mask the images
     ds = tf.data.Dataset.zip((ds, maskgen_ds))
     ds = ds.map(lambda x,m: (x[0]*m, x[1]))
@@ -152,7 +152,7 @@ def inpainter_training_dataset(neg_files, imshape=(80,80),
     # generate random masks
     maskgen_ds = tf.data.Dataset.from_generator(_random_mask_generator, 
                                             tf.float32,
-                                            (80,80,1))
+                                            (imshape[0],imshape[1],1))
     # randomly mask the images
     ds = tf.data.Dataset.zip((ds, maskgen_ds))
     ds = ds.map(lambda x,y: (x*y, x))
