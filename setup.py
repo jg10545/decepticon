@@ -14,7 +14,8 @@ with open('HISTORY.rst') as history_file:
 requirements = [ "numpy",
                 "tensorflow",
                 "matplotlib",
-                "tqdm"]
+                "tqdm",
+                "yaml"]
 
 setup_requirements = ['pytest-runner', ]
 
