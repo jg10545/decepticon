@@ -3,6 +3,10 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
 import os
+import yaml
+
+from tensorflow.keras.experimental import export_saved_model
+
 from decepticon._losses import least_squares_gan_loss, build_style_model, compute_style_loss
 from decepticon.loaders import image_loader_dataset, classifier_training_dataset, inpainter_training_dataset
 
@@ -245,8 +249,6 @@ class Trainer(object):
         self.inpainter = inpainter
         self.discriminator = discriminator
 
-        #self._ds_mask = mask_trainer_dataset
-        #self._ds_inpainter = inpainter_dataset
         self._posfiles = posfiles
         self._negfiles = negfiles
         self._train_maskgen_on_all = train_maskgen_on_all
@@ -259,6 +261,7 @@ class Trainer(object):
         if eval_pos is None:
             eval_pos = self._build_eval_image_batch()
         self.eval_pos = eval_pos  
+        self._save_config()
         
     def _build_eval_image_batch(self):
         """
@@ -422,8 +425,13 @@ class Trainer(object):
                 
             # save all the component models
             if (self.logdir is not None) & self._save_models:
-                self.maskgen.save(os.path.join(self.logdir, "mask_generator.h5"))
-                self.inpainter.save(os.path.join(self.logdir, "inpainter.h5"))
+                # there's a bug with the Keras model.save() method for some
+                # models- maskgen and inpainter appear to be affected. save
+                # these out as tensorflow models instead.
+                #self.maskgen.save(os.path.join(self.logdir, "mask_generator.h5"))
+                #self.inpainter.save(os.path.join(self.logdir, "inpainter.h5"))
+                export_saved_model(self.maskgen, os.path.join(self.logdir, "mask_generator"))
+                export_saved_model(self.inpainter, os.path.join(self.logdir, "inpainter"))
                 self.discriminator.save(os.path.join(self.logdir, "discriminator.h5"))
                 self.classifier.save(os.path.join(self.logdir, "classifier.h5"))
             
@@ -473,6 +481,23 @@ class Trainer(object):
             tf.contrib.summary.histogram("discriminator_score_fake", 
                                          dsc_mask,
                                          step=self.global_step)
+            
+    def _save_config(self):
+        """
+        Macro to write training config to document the experiment
+        """
+        config = {
+                "batch_size":self._batch_size,
+                "class_loss_weight":self.weights["class"],
+                "exponential_loss_weight":self.weights["exp"],
+                "reconstruction_loss_weight":self.weights["recon"],
+                "discriminator_loss_weight":self.weights["disc"],
+                "style_loss_weight":self.weights["style"],
+                "clip":self._clip,
+                "imshape":self._imshape
+                }
+        config_path = os.path.join(self.logdir, "config.yml")
+        yaml.dump(config, open(config_path, "w"), default_flow_style=False)
    
    
    
