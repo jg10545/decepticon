@@ -79,7 +79,7 @@ def image_loader_dataset(filepaths, batch_size=64, repeat=True, shuffle=1000,
 
 def classifier_training_dataset(pos_files, neg_files, imshape=(80,80),
                                num_empty=10, shuffle=1000,
-                                batch_size=32):
+                                batch_size=32, num_parallel_calls=None):
     """
     Build a dataset for pretraining the classifier using images masked
     with random rectangles
@@ -105,9 +105,9 @@ def classifier_training_dataset(pos_files, neg_files, imshape=(80,80),
             tf.data.Dataset.from_tensor_slices(
                 [x[1] for x in filenames_with_labels])))
     # load the images
-    ds = ds.map(lambda x,y: (_load_img(x), y))
+    ds = ds.map(lambda x,y: (_load_img(x), y), num_parallel_calls=num_parallel_calls)
     # augment
-    ds = ds.map(lambda x,y: (_augment(x), y))
+    ds = ds.map(lambda x,y: (_augment(x), y), num_parallel_calls=num_parallel_calls)
     # generate random masks
     maskgen_ds = tf.data.Dataset.from_generator(_random_mask_generator, 
                                             tf.float32,
@@ -127,7 +127,7 @@ def classifier_training_dataset(pos_files, neg_files, imshape=(80,80),
 
 def inpainter_training_dataset(neg_files, imshape=(80,80),
                                num_empty=10, shuffle=1000,
-                                batch_size=32):
+                                batch_size=32, num_parallel_calls=None):
     """
     Build a dataset for pretraining the inpainter using images with random
     rectangular masks.
@@ -155,7 +155,7 @@ def inpainter_training_dataset(neg_files, imshape=(80,80),
                                             (imshape[0],imshape[1],1))
     # randomly mask the images
     ds = tf.data.Dataset.zip((ds, maskgen_ds))
-    ds = ds.map(lambda x,y: (x*y, x))
+    ds = ds.map(lambda x,y: (x*y, x), num_parallel_calls=num_parallel_calls)
     ds = ds.repeat()
     if shuffle:
         ds = ds.shuffle(shuffle)
