@@ -13,9 +13,12 @@ from decepticon._layers import InstanceNormalizationLayer
 
 norm_functions = {True:InstanceNormalizationLayer, False:tf.keras.layers.BatchNormalization}
     
-def ResidualBlock(filters, kernel_size=3, instance_norm=False):
+def _ResidualBlock(filters, kernel_size=3, instance_norm=False):
     """
     Residual block as described in Choi et al's StarGAN paper
+    
+    Currently replaced with below- keras model.save can't handle nested 
+    models for some reason.
     """
     norm = norm_functions[instance_norm]
     
@@ -34,6 +37,33 @@ def ResidualBlock(filters, kernel_size=3, instance_norm=False):
 
     return tf.keras.Model(inpt, net)
     
+
+    
+class ResidualBlock():
+    """
+    Residual block as described in Choi et al's StarGAN paper.
+    
+    This less-elegant version should work with keras' model.save
+    limitations.
+    """
+    
+    def __init__(self, filters, kernel_size=3, instance_norm=False):
+        self.filters = filters
+        self.kernel_size=kernel_size
+        self.norm = norm_functions[instance_norm]
+    
+    def __call__(self, inpt):
+        net = tf.keras.layers.Conv2D(self.filters, self.kernel_size,
+                                           padding="same")(inpt)
+        net =  self.norm()(net)
+        net = tf.keras.layers.Activation("relu")(net)
+        net = tf.keras.layers.Conv2D(self.filters, self.kernel_size,
+                                           padding="same")(net)
+        net = self.norm()(net)
+        net = tf.keras.layers.Activation("relu")(net)
+        net = tf.keras.layers.Add()([inpt, net])
+        return net
+
 def modified_vgg19(weights="imagenet"):
     """
     Rebuild VGG19 without the last two max pooling layers (mask

@@ -5,7 +5,6 @@ import tensorflow.keras.backend as K
 import os
 import yaml
 
-from tensorflow.keras.experimental import export_saved_model
 
 from decepticon._losses import least_squares_gan_loss, build_style_model, compute_style_loss
 from decepticon.loaders import image_loader_dataset, classifier_training_dataset, inpainter_training_dataset
@@ -425,13 +424,8 @@ class Trainer(object):
                 
             # save all the component models
             if (self.logdir is not None) & self._save_models:
-                # there's a bug with the Keras model.save() method for some
-                # models- maskgen and inpainter appear to be affected. save
-                # these out as tensorflow models instead.
-                #self.maskgen.save(os.path.join(self.logdir, "mask_generator.h5"))
-                #self.inpainter.save(os.path.join(self.logdir, "inpainter.h5"))
-                #export_saved_model(self.maskgen, os.path.join(self.logdir, "mask_generator"))
-                #export_saved_model(self.inpainter, os.path.join(self.logdir, "inpainter"))
+                self.maskgen.save(os.path.join(self.logdir, "mask_generator.h5"))
+                self.inpainter.save(os.path.join(self.logdir, "inpainter.h5"))
                 self.discriminator.save(os.path.join(self.logdir, "discriminator.h5"))
                 self.classifier.save(os.path.join(self.logdir, "classifier.h5"))
             
