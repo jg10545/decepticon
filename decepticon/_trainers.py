@@ -430,8 +430,8 @@ class Trainer(object):
                 # these out as tensorflow models instead.
                 #self.maskgen.save(os.path.join(self.logdir, "mask_generator.h5"))
                 #self.inpainter.save(os.path.join(self.logdir, "inpainter.h5"))
-                export_saved_model(self.maskgen, os.path.join(self.logdir, "mask_generator"))
-                export_saved_model(self.inpainter, os.path.join(self.logdir, "inpainter"))
+                #export_saved_model(self.maskgen, os.path.join(self.logdir, "mask_generator"))
+                #export_saved_model(self.inpainter, os.path.join(self.logdir, "inpainter"))
                 self.discriminator.save(os.path.join(self.logdir, "discriminator.h5"))
                 self.classifier.save(os.path.join(self.logdir, "classifier.h5"))
             
