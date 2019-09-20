@@ -368,7 +368,7 @@ class Trainer(object):
                         self.weights["class"], self.weights["exp"],
                         clip=self._clip)
                 # record batch of masks to buffer
-                mask_buffer.append(mask)
+                mask_buffer.append(mask.numpy())
                 
                 if e >= mg_spe:
                     mask_buffer = np.concatenate(mask_buffer, axis=0)
