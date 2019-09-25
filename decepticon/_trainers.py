@@ -284,7 +284,9 @@ class Trainer(object):
             files = self._posfiles + self._negfiles
         else:
             files = self._posfiles
-            
+        # shuffle so pos and neg patches won't be separated (if the
+        # dataset is larger than the shuffle queue)
+        np.random.shuffle(files)
         steps_per_epoch = int(np.floor(len(files)/self._batch_size))
         ds = image_loader_dataset(files, batch_size=self._batch_size,
                                       num_parallel_calls=self._num_parallel_calls)        
