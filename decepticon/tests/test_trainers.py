@@ -42,7 +42,7 @@ discriminator = tf.keras.Model(inpt, output)
 
 
 def test_maskgen_training_step():
-    cls_loss, exp_loss, loss, mask = maskgen_training_step(opt, input_img,
+    cls_loss, exp_loss, prior_loss, loss, mask = maskgen_training_step(opt, input_img,
                                             maskgen, classifier, inpainter)
     
     maskshape = mask.get_shape().as_list()

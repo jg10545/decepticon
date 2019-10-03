@@ -90,7 +90,7 @@ def _augment(im):
 
 
 def image_loader_dataset(filepaths, batch_size=64, repeat=False, shuffle=1000, 
-                        augment=True, num_parallel_calls=None):
+                        augment=True, num_parallel_calls=None, prefetch=True):
     """
     Barebones function for building a tensorflow Dataset to load,
     shuffle, and batch images from disk.
@@ -114,8 +114,10 @@ def image_loader_dataset(filepaths, batch_size=64, repeat=False, shuffle=1000,
         ds = ds.shuffle(shuffle)
     if batch_size:
         ds = ds.batch(batch_size)
+    if prefetch:
+        ds = ds.prefetch(1)
     
-    return ds.prefetch(1)
+    return ds
 
 
 
@@ -123,7 +125,8 @@ def image_loader_dataset(filepaths, batch_size=64, repeat=False, shuffle=1000,
 def classifier_training_dataset(pos_files, neg_files, imshape=(80,80),
                                num_empty=10, shuffle=1000,
                                 batch_size=32, intensity=3,
-                                num_parallel_calls=None):
+                                num_parallel_calls=None,
+                                prefetch=True):
     """
     Build a dataset for pretraining the classifier using images masked
     with random circles
@@ -135,11 +138,10 @@ def classifier_training_dataset(pos_files, neg_files, imshape=(80,80),
     :shuffle: size of shuffle queue
     :batch_size: size of batches
     :intensity: Poisson intensity
+    :num_parallel_calls: number of threads for map operations
+    :prefetch: whether to prefetch the next batch
     """
-    #def _random_mask_generator():
-    #    while True:
-    #        img = np.ones((imshape[0], imshape[1],1)).astype(np.float32)
-    #        yield _mask_img(img, num_empty)
+    # define a dataset that generates 
     circle_ds = circle_mask_dataset(imshape, intensity, 
                                     batch_size=0, prefetch=False)
     
@@ -156,12 +158,7 @@ def classifier_training_dataset(pos_files, neg_files, imshape=(80,80),
     ds = ds.map(lambda x,y: (_load_img(x), y), num_parallel_calls=num_parallel_calls)
     # augment
     ds = ds.map(lambda x,y: (_augment(x), y), num_parallel_calls=num_parallel_calls)
-    # generate random masks
-    #maskgen_ds = tf.data.Dataset.from_generator(_random_mask_generator, 
-    #                                        tf.float32,
-    #                                        (imshape[0],imshape[1],1))
-    # randomly mask the images
-    #ds = tf.data.Dataset.zip((ds, maskgen_ds))
+    # zip together images and masks
     ds = tf.data.Dataset.zip((ds, circle_ds))
     ds = ds.map(lambda x,m: (x[0]*(1-m), x[1]))
     ds = ds.repeat()
@@ -169,6 +166,8 @@ def classifier_training_dataset(pos_files, neg_files, imshape=(80,80),
         ds = ds.shuffle(shuffle)
     if batch_size:
         ds = ds.batch(batch_size)
+    if prefetch:
+        ds = ds.prefetch(1)
         
     return ds
 
