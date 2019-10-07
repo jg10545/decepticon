@@ -371,7 +371,7 @@ def build_discriminator(input_shape=(None, None, 3), downsample=1):
 
 
 
-def MaskDiscriminator(input_shape=(None, None, 3), downsample=1):
+def MaskDiscriminator(input_shape=(None, None, 1), downsample=1):
     """
     I'm not sure whether this is exactly the modified patchGAN
     used in Shetty et al- the supplementary material doesn't specify
@@ -401,7 +401,7 @@ def MaskDiscriminator(input_shape=(None, None, 3), downsample=1):
     return tf.keras.Model(inpt, net)
 
 
-def build_mask_discriminator(input_shape=(None, None, 3), downsample=1):
+def build_mask_discriminator(input_shape=(None, None, 1), downsample=1):
     """
     Build the real/fake discriminator for masks
     """

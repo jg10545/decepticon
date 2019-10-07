@@ -66,6 +66,7 @@ image_display="""
 # Object removal components
 
 From left to right:
+    
     * original image
     * generated mask
     * inpainter outputs
@@ -103,5 +104,5 @@ loss_descriptions = {
                     "inpainter_total_loss":inpainter_total_loss,
                     "inpainter_reconstruction_L1_loss":recon_loss,
                     "discriminator_GAN_loss":disc_loss,
-                    "mask_discrimintor_loss":maskdisc_loss
+                    "mask_discriminator_loss":maskdisc_loss
                     }

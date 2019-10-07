@@ -327,16 +327,14 @@ class Trainer(object):
         # shuffle so pos and neg patches won't be separated (if the
         # dataset is larger than the shuffle queue)
         np.random.shuffle(files)
-        steps_per_epoch = int(np.floor(len(files)/self._batch_size))
         ds = image_loader_dataset(files, batch_size=self._batch_size,
                                       num_parallel_calls=self._num_parallel_calls)        
-        return ds, steps_per_epoch
+        return ds#, steps_per_epoch
     
     def _inpainter_dataset(self):
         """
         Build a tensorflow dataset for training the inpainter
         """
-        #steps_per_epoch = int(np.floor(len(self._negfiles)/self._batch_size))
         ds = image_loader_dataset(self._negfiles, batch_size=self._batch_size,
                                       num_parallel_calls=self._num_parallel_calls)        
         return ds#, steps_per_epoch
@@ -345,11 +343,11 @@ class Trainer(object):
         """
         Build a tensorflow dataset for pretraining the classifier
         """
-        #steps_per_epoch = int(np.floor((len(self._posfiles)+len(self._negfiles))/self._batch_size))
+        steps_per_epoch = int(np.floor((len(self._posfiles)+len(self._negfiles))/self._batch_size))
         ds = classifier_training_dataset(self._posfiles, self._negfiles,
                                          batch_size=self._batch_size,
                                          imshape=self._imshape)
-        return ds#, steps_per_epoch
+        return ds, steps_per_epoch
     
     
     def pretrain_classifier(self, epochs=1):
@@ -397,7 +395,9 @@ class Trainer(object):
         # build mask generator dataset
         ds_maskgen = self._maskgen_dataset()
         # incorporate mask prior for mask generator training
-        ds_circle = circle_mask_dataset(self._imshape, batch_size=0, prefetch=0)
+        ds_circle = circle_mask_dataset(self._imshape, 
+                                        batch_size=self._batch_size, 
+                                        prefetch=1)
         ds_maskgen = tf.data.Dataset.zip((ds_maskgen, ds_circle))
         # build inpainter dataset
         ds_inpainter = self._inpainter_dataset()
@@ -421,10 +421,12 @@ class Trainer(object):
                             self.maskdisc, mask, 
                             prior_sample, 
                             self._optimizers["maskdisc"])
+                else:
+                    maskdisc_loss = 0
             mask_buffer = np.concatenate(mask_buffer, axis=0)
                 
             # one training epoch on the inpainter and discriminator:
-            for x in ds_inpainter:
+            for i,x in enumerate(ds_inpainter):
                 # randomly select a mask batch
                 sample_indices = np.random.choice(np.arange(mask_buffer.shape[0]), 
                                           replace=False,
@@ -432,7 +434,7 @@ class Trainer(object):
                 mask = mask_buffer[sample_indices]
                 
                 # every other step: train inpainter
-                if e % 2 == 0:
+                if i % 2 == 0:
                     # run training step
                     recon_loss, disc_loss, style_loss, inpaint_loss = inpainter_training_step(
                             self._optimizers["inpainter"], x, mask, 
@@ -445,9 +447,6 @@ class Trainer(object):
                     disc_loss = discriminator_training_step(
                             self._optimizers["discriminator"],
                             x, mask, self.inpainter, self.discriminator)
-                #if e >= ip_spe:
-                #    mask_buffer = np.concatenate(mask_buffer, axis=0)
-                #    break
                 
             # end of epoch-  record summary from last training batch
             #with tf.contrib.summary.always_record_summaries():
@@ -460,38 +459,12 @@ class Trainer(object):
                     "inpainter_total_loss":inpaint_loss,
                     "inpainter_reconstruction_L1_loss":recon_loss,
                     "discriminator_GAN_loss":disc_loss,
-                    "mask_discrimintor_loss":maskdisc_loss
+                    "mask_discriminator_loss":maskdisc_loss
                     }
             for l in losses_to_record:
                 tf.compat.v2.summary.scalar(l, losses_to_record[l],
                                       step=self.global_step, 
                                       description=_descriptions.loss_descriptions[l])
-            #tf.compat.v2.summary.scalar("mask_generator_total_loss", mask_loss,
-            #                          step=self.global_step, description=_descriptions.maskgen)
-            #tf.compat.v2.summary.scalar("mask_generator_classifier_loss", cls_loss,
-            #                          step=self.global_step,
-            #                          description=_descriptions.cls_loss)
-            #tf.compat.v2.summary.scalar("mask_generator_exponential_loss", exp_loss,
-            #                          step=self.global_step,
-            #                          description=_descriptions.exp_loss)
-            #tf.compat.v2.summary.scalar("mask_generator_prior_loss", prior_loss,
-            #                          step=self.global_step,
-            #                          description=_descriptions.prior_loss)
-            #tf.compat.v2.summary.scalar("inpainter_style_loss", style_loss, 
-            #                          step=self.global_step,
-            #                          description=_descriptions.style_loss)
-            #tf.compat.v2.summary.scalar("inpainter_total_loss", inpaint_loss, 
-            #                          step=self.global_step,
-            #                          description=_descriptions.inpainter_total_loss)
-            #tf.compat.v2.summary.scalar("inpainter_reconstruction_L1_loss", recon_loss,
-            #                          step=self.global_step,
-            #                          description=_descriptions.recon_loss)
-            #tf.compat.v2.summary.scalar("discriminator_GAN_loss", disc_loss,
-            #                          step=self.global_step,
-            #                          description=_descriptions.disc_loss)
-            #tf.compat.v2.summary.scalar("mask_discrimintor_loss", maskdisc_loss,
-            #                          step=self.global_step,
-            #                          description="")
             # also record summary images
             if self.eval_pos is not None:
                 self.evaluate()
@@ -538,20 +511,19 @@ class Trainer(object):
         
         
         # record everything
-        #with tf.contrib.summary.always_record_summaries():
         tf.compat.v2.summary.image("input__mask__inpainted__reconstructed", 
-                             concatenated, max_images=5,
+                             concatenated, max_outputs=5,
                              step=self.global_step,
                              description=_descriptions.image_display)
         tf.compat.v2.summary.histogram("reconstructed_classifier_score", 
                                          object_score,
                                          step=self.global_step,
                                          description=_descriptions.reconstructed_classifier_score)
-        tf.contrib.summary.histogram("discriminator_score_real", 
+        tf.compat.v2.summary.histogram("discriminator_score_real", 
                                          dsc_unmask,
                                          step=self.global_step,
                                          description=_descriptions.disc_score_real)
-        tf.contrib.summary.histogram("discriminator_score_fake", 
+        tf.compat.v2.summary.histogram("discriminator_score_fake", 
                                          dsc_mask,
                                          step=self.global_step,
                                          description=_descriptions.disc_score_fake )
