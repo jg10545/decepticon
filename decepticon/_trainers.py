@@ -411,7 +411,8 @@ class Trainer(object):
                         self._optimizers["mask"], x, self.maskgen, 
                         self.classifier, self.inpainter,
                         self.maskdisc,
-                        self.weights["class"], self.weights["exp"])
+                        self.weights["class"], self.weights["exp"],
+                        self.weights["prior"])
                 # record batch of masks to buffer
                 mask_buffer.append(mask.numpy())
                 
