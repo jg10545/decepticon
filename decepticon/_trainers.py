@@ -295,6 +295,7 @@ class Trainer(object):
         self._optimizers = {
                 x:tf.keras.optimizers.Adam(lr, clipnorm=clip) for x in ["mask", "inpainter", 
                                           "discriminator", "maskdisc"]}
+        self._lr = lr
         self._assemble_full_model()
         self._imshape = imshape
         if eval_pos is None:
@@ -540,8 +541,11 @@ class Trainer(object):
                 "reconstruction_loss_weight":self.weights["recon"],
                 "discriminator_loss_weight":self.weights["disc"],
                 "style_loss_weight":self.weights["style"],
+                "prior_weight":self.weights["prior"],
                 "clip":self._clip,
-                "imshape":self._imshape
+                "imshape":self._imshape,
+                "train_maskgen_on_all":self._train_maskgen_on_all,
+                "learning_rate":self._lr
                 }
         config_path = os.path.join(self.logdir, "config.yml")
         yaml.dump(config, open(config_path, "w"), default_flow_style=False)
