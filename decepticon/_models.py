@@ -366,3 +366,49 @@ def build_discriminator(input_shape=(None, None, 3), downsample=1):
     net = disc(inpt)
     model = tf.keras.Model(inpt, net)
     return model
+
+
+
+
+
+def MaskDiscriminator(input_shape=(None, None, 1), downsample=1):
+    """
+    I'm not sure whether this is exactly the modified patchGAN
+    used in Shetty et al- the supplementary material doesn't specify
+    and the code has several versions.
+    
+    :downsample: reduce the number of kernels in each layer
+        by this factor
+    """
+    inpt = tf.keras.layers.Input(input_shape)
+    # 128 -> 64
+    net = tf.keras.layers.Conv2D(int(64/downsample), kernel_size=4,
+                                  strides=2, padding="same")(inpt)
+    net = tf.keras.layers.LeakyReLU(0.2)(net)
+    # 64 -> 32
+    net = tf.keras.layers.Conv2D(int(128/downsample), kernel_size=4,
+                                  strides=2, padding="same")(net)
+    net = tf.keras.layers.LeakyReLU(0.2)(net)
+    # 32 -> 16
+    net = tf.keras.layers.Conv2D(int(256/downsample), kernel_size=4,
+                                  strides=2, padding="same")(net)
+    net = tf.keras.layers.LeakyReLU(0.2)(net)
+    
+    # classification head
+    net = tf.keras.layers.GlobalMaxPool2D()(net)
+    net = tf.keras.layers.Dense(1, activation="sigmoid")(net)
+    
+    return tf.keras.Model(inpt, net)
+
+
+def build_mask_discriminator(input_shape=(None, None, 1), downsample=1):
+    """
+    Build the real/fake discriminator for masks
+    """
+    
+    inpt = tf.keras.layers.Input(input_shape)
+    with tf.name_scope("mask_discriminator"):
+        disc = MaskDiscriminator(input_shape, downsample)
+    net = disc(inpt)
+    model = tf.keras.Model(inpt, net)
+    return model

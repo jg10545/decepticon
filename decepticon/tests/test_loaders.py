@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import tensorflow as tf
-from decepticon.loaders import image_loader_dataset
+from decepticon.loaders import image_loader_dataset, circle_mask_dataset
 
 tf.enable_eager_execution()
 
@@ -16,3 +16,11 @@ def test_image_loader_dataset_loads_correctly(test_png_path):
     
     assert batch.shape == (2, 32, 32, 3)
     
+def test_circle_mask_dataset():
+    ds = circle_mask_dataset((10,10), batch_size=0)
+    assert isinstance(ds, tf.data.Dataset)
+    
+    for x in ds:
+        x = x.numpy()
+        break
+    assert x.shape == (10,10,1)
