@@ -538,14 +538,15 @@ class Trainer(object):
                 "batch_size":self._batch_size,
                 "class_loss_weight":self.weights["class"],
                 "exponential_loss_weight":self.weights["exp"],
-                "reconstruction_loss_weight":self.weights["recon"],
-                "discriminator_loss_weight":self.weights["disc"],
-                "style_loss_weight":self.weights["style"],
+                "reconstruction_weight":self.weights["recon"],
+                "disc_weight":self.weights["disc"],
+                "style_weight":self.weights["style"],
                 "prior_weight":self.weights["prior"],
                 "clip":self._clip,
                 "imshape":self._imshape,
                 "train_maskgen_on_all":self._train_maskgen_on_all,
-                "learning_rate":self._lr
+                "lr":self._lr,
+                "num_parallel_calls":self._num_parallel_calls
                 }
         config_path = os.path.join(self.logdir, "config.yml")
         yaml.dump(config, open(config_path, "w"), default_flow_style=False)
