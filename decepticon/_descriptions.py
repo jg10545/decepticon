@@ -96,12 +96,12 @@ Pixel-wise score for fake parts of the image
 """
 
 loss_descriptions = defaultdict(str)
-loss_descriptions["mask_generator_total_loss"]:maskgen
-loss_descriptions["mask_generator_classifier_loss"]:cls_loss
-loss_descriptions["mask_generator_exponential_loss"]:exp_loss
-loss_descriptions["mask_generator_prior_loss"]:prior_loss
-loss_descriptions["inpainter_style_loss"]:style_loss
-loss_descriptions["inpainter_total_loss"]:inpainter_total_loss
-loss_descriptions["inpainter_reconstruction_L1_loss"]:recon_loss
-loss_descriptions["discriminator_GAN_loss"]:disc_loss
-loss_descriptions["mask_discriminator_loss"]:maskdisc_loss
+loss_descriptions["mask_generator_total_loss"] = maskgen
+loss_descriptions["mask_generator_classifier_loss"] = cls_loss
+loss_descriptions["mask_generator_exponential_loss"] = exp_loss
+loss_descriptions["mask_generator_prior_loss"] = prior_loss
+loss_descriptions["inpainter_style_loss"] = style_loss
+loss_descriptions["inpainter_total_loss"] = inpainter_total_loss
+loss_descriptions["inpainter_reconstruction_L1_loss"] = recon_loss
+loss_descriptions["discriminator_GAN_loss"] = disc_loss
+loss_descriptions["mask_discriminator_loss"] = maskdisc_loss
