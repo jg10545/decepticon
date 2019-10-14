@@ -10,7 +10,18 @@ import decepticon
 from decepticon._losses import least_squares_gan_loss, build_style_model, compute_style_loss
 from decepticon.loaders import image_loader_dataset, classifier_training_dataset
 from decepticon.loaders import inpainter_training_dataset, circle_mask_dataset
+from decepticon._descriptions import loss_descriptions
 from decepticon import _descriptions
+
+maskgen_lossnames = ["mask_generator_classifier_loss",
+                     "mask_generator_exponential_loss",
+                     "mask_generator_prior_loss",
+                     "mask_generator_total_loss"]
+        
+inpaint_lossnames = ["inpainter_reconstruction_L1_loss",
+                     "inpainter_discriminator_loss",
+                     "inpainter_style_loss",
+                     "inpainter_total_loss"]
 
 
 
@@ -191,7 +202,8 @@ def discriminator_training_step(opt, inpt_img, mask, inpainter,
         sigmoid_out = disc(y)
         
         # compute loss
-        loss = least_squares_gan_loss(mask, sigmoid_out)
+        #loss = least_squares_gan_loss(mask, sigmoid_out)
+        loss = tf.reduce_mean(least_squares_gan_loss(mask, sigmoid_out))
         
     # compute gradients and update
     variables = disc.trainable_variables
@@ -221,7 +233,7 @@ class Trainer(object):
                  eval_pos=None, logdir=None, clip=10,
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
-                 downsample=2):
+                 downsample=2, step=0):
         """
         :posfiles: list of paths to positive image patches
         :negfiles: list of paths to negative image patches
@@ -246,10 +258,11 @@ class Trainer(object):
         :imshape: image dimensions- only matter for pretraining steps
         :downsample: factor to downsample new models by if not passed to
                 constructor
+        :step: initial training step value
         """
         self.global_step = tf.compat.v1.train.get_or_create_global_step()
         assert tf.executing_eagerly(), "eager execution must be enabled first"
-        self.epoch = 0
+        self.step = step
 
         self.weights = {"class":class_loss_weight,
                         "exp":exponential_loss_weight,
@@ -302,6 +315,8 @@ class Trainer(object):
             eval_pos = self._build_eval_image_batch()
         self.eval_pos = eval_pos  
         self._save_config()
+        # save an initial set of images and histograms for comparison
+        self.evaluate()
         
     def _build_eval_image_batch(self):
         """
@@ -330,7 +345,7 @@ class Trainer(object):
         np.random.shuffle(files)
         ds = image_loader_dataset(files, batch_size=self._batch_size,
                                       num_parallel_calls=self._num_parallel_calls)        
-        return ds#, steps_per_epoch
+        return ds
     
     def _inpainter_dataset(self):
         """
@@ -338,7 +353,7 @@ class Trainer(object):
         """
         ds = image_loader_dataset(self._negfiles, batch_size=self._batch_size,
                                       num_parallel_calls=self._num_parallel_calls)        
-        return ds#, steps_per_epoch
+        return ds
     
     def _classifier_dataset(self):
         """
@@ -383,6 +398,45 @@ class Trainer(object):
         self.full_model = tf.keras.Model(inpt, reconstructed)
         
         
+    def _run_maskgen_training_step(self, x):
+        # wrapper for maskgen_training_step
+        *maskgen_losses, mask = maskgen_training_step(
+                self._optimizers["mask"], x, self.maskgen, 
+                self.classifier, self.inpainter,
+                self.maskdisc,
+                self.weights["class"], self.weights["exp"],
+                self.weights["prior"])
+        maskgen_losses = dict(zip(maskgen_lossnames, maskgen_losses))
+        return maskgen_losses, mask
+
+    def _run_mask_discriminator_training_step(self, mask, prior_sample):
+        # wrapper for mask_discriminator_training_step
+        if (self.weights["prior"] > 0)&(self.maskdisc is not None):
+            loss = mask_discriminator_training_step(
+                    self.maskdisc, mask, 
+                    prior_sample, 
+                    self._optimizers["maskdisc"])
+        else:
+            loss = 0
+        return loss
+    
+    def _run_inpainter_training_step(self, x, mask):
+        # wrapper for inpainter_training_step
+        inpainter_losses = inpainter_training_step(
+                self._optimizers["inpainter"], x, mask, 
+                self.inpainter, self.discriminator, 
+                self.weights["recon"], self.weights["disc"],
+                self.weights["style"], self._style_model)
+        inpainter_losses = dict(zip(inpaint_lossnames, inpainter_losses))
+        return inpainter_losses
+    
+    def _run_discriminator_training_step(self, x, mask):
+        # wrapper for discriminator_training_step
+        disc_loss = discriminator_training_step(
+                self._optimizers["discriminator"],
+                x, mask, self.inpainter, self.discriminator)
+        return {"discriminator_GAN_loss":disc_loss}
+
     def fit(self, epochs=1):
         """
         Train the models for some number of epochs. Every epoch:
@@ -408,23 +462,31 @@ class Trainer(object):
             mask_buffer = []
             for x, prior_sample in ds_maskgen:
                 # run mask generator training step
-                cls_loss, exp_loss, prior_loss, mask_loss, mask = maskgen_training_step(
-                        self._optimizers["mask"], x, self.maskgen, 
-                        self.classifier, self.inpainter,
-                        self.maskdisc,
-                        self.weights["class"], self.weights["exp"],
-                        self.weights["prior"])
+                maskgen_losses, mask = self._run_maskgen_training_step(x)
+                #*maskgen_losses, mask = maskgen_training_step(
+                #        self._optimizers["mask"], x, self.maskgen, 
+                #        self.classifier, self.inpainter,
+                #        self.maskdisc,
+                #        self.weights["class"], self.weights["exp"],
+                #        self.weights["prior"])
+                #maskgen_losses = dict(zip(maskgen_lossnames, maskgen_losses))
                 # record batch of masks to buffer
                 mask_buffer.append(mask.numpy())
                 
-                # run the mask discriminator step
-                if (self.weights["prior"] > 0)&(self.maskdisc is not None):
-                    maskdisc_loss = mask_discriminator_training_step(
-                            self.maskdisc, mask, 
-                            prior_sample, 
-                            self._optimizers["maskdisc"])
-                else:
-                    maskdisc_loss = 0
+                # run the mask discriminator step (if there is one)
+                mdl = self._run_mask_discriminator_training_step(mask, prior_sample)
+                maskgen_losses["mask_discriminator_loss"] = mdl
+                #if (self.weights["prior"] > 0)&(self.maskdisc is not None):
+                #    maskgen_losses["mask_discriminator_loss"] = mask_discriminator_training_step(
+                #            self.maskdisc, mask, 
+                #            prior_sample, 
+                #            self._optimizers["maskdisc"])
+                #else:
+                #    maskgen_losses["mask_discriminator_loss"] = 0
+                    
+                # record losses to tensorboard
+                self._record_losses(**maskgen_losses)
+                self.step += 1
             mask_buffer = np.concatenate(mask_buffer, axis=0)
                 
             # one training epoch on the inpainter and discriminator:
@@ -438,35 +500,44 @@ class Trainer(object):
                 # every other step: train inpainter
                 if i % 2 == 0:
                     # run training step
-                    recon_loss, disc_loss, style_loss, inpaint_loss = inpainter_training_step(
-                            self._optimizers["inpainter"], x, mask, 
-                            self.inpainter, self.discriminator, 
-                            self.weights["recon"], self.weights["disc"],
-                            self.weights["style"], self._style_model)
+                    inpainter_losses = self._run_inpainter_training_step(x, mask)
+                    #inpainter_losses = inpainter_training_step(
+                    #        self._optimizers["inpainter"], x, mask, 
+                    #        self.inpainter, self.discriminator, 
+                    #        self.weights["recon"], self.weights["disc"],
+                    #        self.weights["style"], self._style_model)
+                    #inpainter_losses = dict(zip(inpaint_lossnames, inpainter_losses))
+                    self._record_losses(**inpainter_losses)
+                    self.step += 1
                 # alternating step train discriminator
                 else:
                     # run training step
-                    disc_loss = discriminator_training_step(
-                            self._optimizers["discriminator"],
-                            x, mask, self.inpainter, self.discriminator)
+                    disc_loss = self._run_discriminator_training_step(x, mask)
+                    self._record_losses(**disc_loss)
+                    #disc_loss = discriminator_training_step(
+                    #        self._optimizers["discriminator"],
+                    #        x, mask, self.inpainter, self.discriminator)
+                    #self._record_losses({"discriminator_GAN_loss":disc_loss})
+                    self.step += 1
+                
                 
             # end of epoch-  record summary from last training batch
             #with tf.contrib.summary.always_record_summaries():
-            losses_to_record = {
-                    "mask_generator_total_loss":mask_loss,
-                    "mask_generator_classifier_loss":cls_loss,
-                    "mask_generator_exponential_loss":exp_loss,
-                    "mask_generator_prior_loss":prior_loss,
-                    "inpainter_style_loss":style_loss,
-                    "inpainter_total_loss":inpaint_loss,
-                    "inpainter_reconstruction_L1_loss":recon_loss,
-                    "discriminator_GAN_loss":disc_loss,
-                    "mask_discriminator_loss":maskdisc_loss
-                    }
-            for l in losses_to_record:
-                tf.compat.v2.summary.scalar(l, losses_to_record[l],
-                                      step=self.global_step, 
-                                      description=_descriptions.loss_descriptions[l])
+            #losses_to_record = {
+            #        "mask_generator_total_loss":mask_loss,
+            #        "mask_generator_classifier_loss":cls_loss,
+            #        "mask_generator_exponential_loss":exp_loss,
+            #        "mask_generator_prior_loss":prior_loss,
+            #        "inpainter_style_loss":style_loss,
+            #        "inpainter_total_loss":inpaint_loss,
+            #        "inpainter_reconstruction_L1_loss":recon_loss,
+            #        "discriminator_GAN_loss":disc_loss,
+            #        "mask_discriminator_loss":maskdisc_loss
+            #        }
+            #for l in losses_to_record:
+            #    tf.compat.v2.summary.scalar(l, losses_to_record[l],
+            #                          step=self.global_step, 
+            #                          description=_descriptions.loss_descriptions[l])
             # also record summary images
             if self.eval_pos is not None:
                 self.evaluate()
@@ -482,7 +553,13 @@ class Trainer(object):
             
             self.global_step.assign_add(1)
                 
-                
+    def _record_losses(self, **lossvals):
+        # expect a dictionary of loss names to values
+        for lossname in lossvals:
+            tf.compat.v2.summary.scalar(lossname, lossvals[lossname],
+                                      step=self.step, 
+                                      description=loss_descriptions[lossname])
+          
     
     def evaluate(self):
         """
