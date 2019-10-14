@@ -8,6 +8,7 @@ import yaml
 
 import decepticon
 from decepticon._losses import least_squares_gan_loss, build_style_model, compute_style_loss
+from decepticon._losses import pixelwise_variance
 from decepticon.loaders import image_loader_dataset, classifier_training_dataset
 from decepticon.loaders import inpainter_training_dataset, circle_mask_dataset
 from decepticon._descriptions import loss_descriptions
@@ -471,6 +472,8 @@ class Trainer(object):
                 #        self.weights["prior"])
                 #maskgen_losses = dict(zip(maskgen_lossnames, maskgen_losses))
                 # record batch of masks to buffer
+                # record the mean pixelwise mask variance
+                self._record_losses(mask_variance=pixelwise_variance(mask))
                 mask_buffer.append(mask.numpy())
                 
                 # run the mask discriminator step (if there is one)

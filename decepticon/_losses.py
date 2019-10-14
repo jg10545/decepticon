@@ -113,3 +113,17 @@ def compute_style_loss(x, y, style_model):
         loss += K.mean(K.square(x_gram - y_gram)) 
         
     return loss
+
+
+
+def pixelwise_variance(x):
+    """
+    Compute the average variance-per-pixel for
+    a batch of images (to make sure outputs aren't
+    mode-collapsing)
+    
+    :x: an image with batch dimension 0
+    """
+    pixelwise_mean = tf.reduce_mean(x, 0)
+    meandiff = x - tf.expand_dims(pixelwise_mean, 0)
+    return tf.reduce_mean(meandiff**2)

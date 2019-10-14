@@ -41,3 +41,4 @@ def load_trainer_from_saved(posfiles, negfiles, old_dir, new_dir,
         
     return Trainer(posfiles, negfiles, 
                    logdir=new_dir, **config)
+
