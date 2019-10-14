@@ -323,8 +323,13 @@ class Trainer(object):
         """
         Fetch a batch of images to use for tensorboard visualization
         """
-        ds = image_loader_dataset(self._posfiles[:self._batch_size], 
-                                  batch_size=self._batch_size,
+        # how many positive images do we have?
+        N = len(self._posfiles)
+        bs = self._batch_size
+        delta = min(int(np.floor(N/bs)),1)
+        files = self._posfiles[::delta][:bs]
+        ds = image_loader_dataset(files, 
+                                  batch_size=bs,
                                   repeat=False,
                                   shuffle=1,
                                   augment=False) 
@@ -464,14 +469,6 @@ class Trainer(object):
             for x, prior_sample in ds_maskgen:
                 # run mask generator training step
                 maskgen_losses, mask = self._run_maskgen_training_step(x)
-                #*maskgen_losses, mask = maskgen_training_step(
-                #        self._optimizers["mask"], x, self.maskgen, 
-                #        self.classifier, self.inpainter,
-                #        self.maskdisc,
-                #        self.weights["class"], self.weights["exp"],
-                #        self.weights["prior"])
-                #maskgen_losses = dict(zip(maskgen_lossnames, maskgen_losses))
-                # record batch of masks to buffer
                 # record the mean pixelwise mask variance
                 self._record_losses(mask_variance=pixelwise_variance(mask))
                 mask_buffer.append(mask.numpy())
@@ -479,13 +476,6 @@ class Trainer(object):
                 # run the mask discriminator step (if there is one)
                 mdl = self._run_mask_discriminator_training_step(mask, prior_sample)
                 maskgen_losses["mask_discriminator_loss"] = mdl
-                #if (self.weights["prior"] > 0)&(self.maskdisc is not None):
-                #    maskgen_losses["mask_discriminator_loss"] = mask_discriminator_training_step(
-                #            self.maskdisc, mask, 
-                #            prior_sample, 
-                #            self._optimizers["maskdisc"])
-                #else:
-                #    maskgen_losses["mask_discriminator_loss"] = 0
                     
                 # record losses to tensorboard
                 self._record_losses(**maskgen_losses)
@@ -504,12 +494,6 @@ class Trainer(object):
                 if i % 2 == 0:
                     # run training step
                     inpainter_losses = self._run_inpainter_training_step(x, mask)
-                    #inpainter_losses = inpainter_training_step(
-                    #        self._optimizers["inpainter"], x, mask, 
-                    #        self.inpainter, self.discriminator, 
-                    #        self.weights["recon"], self.weights["disc"],
-                    #        self.weights["style"], self._style_model)
-                    #inpainter_losses = dict(zip(inpaint_lossnames, inpainter_losses))
                     self._record_losses(**inpainter_losses)
                     self.step += 1
                 # alternating step train discriminator
@@ -517,31 +501,10 @@ class Trainer(object):
                     # run training step
                     disc_loss = self._run_discriminator_training_step(x, mask)
                     self._record_losses(**disc_loss)
-                    #disc_loss = discriminator_training_step(
-                    #        self._optimizers["discriminator"],
-                    #        x, mask, self.inpainter, self.discriminator)
-                    #self._record_losses({"discriminator_GAN_loss":disc_loss})
                     self.step += 1
                 
                 
-            # end of epoch-  record summary from last training batch
-            #with tf.contrib.summary.always_record_summaries():
-            #losses_to_record = {
-            #        "mask_generator_total_loss":mask_loss,
-            #        "mask_generator_classifier_loss":cls_loss,
-            #        "mask_generator_exponential_loss":exp_loss,
-            #        "mask_generator_prior_loss":prior_loss,
-            #        "inpainter_style_loss":style_loss,
-            #        "inpainter_total_loss":inpaint_loss,
-            #        "inpainter_reconstruction_L1_loss":recon_loss,
-            #        "discriminator_GAN_loss":disc_loss,
-            #        "mask_discriminator_loss":maskdisc_loss
-            #        }
-            #for l in losses_to_record:
-            #    tf.compat.v2.summary.scalar(l, losses_to_record[l],
-            #                          step=self.global_step, 
-            #                          description=_descriptions.loss_descriptions[l])
-            # also record summary images
+            # end of epoch: record summary images and histograms
             if self.eval_pos is not None:
                 self.evaluate()
                 
