@@ -122,7 +122,8 @@ def mask_discriminator_training_step(maskdisc, mask, prior_sample, opt):
 def inpainter_training_step(opt, inpt_img, mask, inpainter,
                             disc, recon_weight=100,
                             disc_weight=2, style_weight=0, 
-                            tv_weight=0, style_model=None):
+                            tv_weight=0, style_model=None,
+                            inpainter_mask_val=0):
     """
     TensorFlow function to perform one training step on the inpainter.
     
@@ -138,6 +139,7 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
     :style_weight: weight for style loss (equations 6, 9)
     :tv_weight: weight for total variation loss (equation 9)
     :style_model: model to use for computing style representation
+    :inpainter_mask_val: value to set masked areas to
     
     Returns
     :recon_loss: reconstruction loss for the batch
@@ -151,7 +153,7 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
         # predict a mask from the original image and mask it
         #mask = maskgen(inpt_img)
         inverse_mask = 1 - mask
-        masked_inpt = inpt_img*inverse_mask
+        masked_inpt = inpt_img*inverse_mask + inpainter_mask_val*mask
         
         # fill in with inpainter
         inpainted = inpainter(masked_inpt)
@@ -255,7 +257,7 @@ class Trainer(object):
                  eval_pos=None, logdir=None, clip=10,
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
-                 downsample=2, step=0):
+                 downsample=2, step=0, inpainter_mask_val=0):
         """
         :posfiles: list of paths to positive image patches
         :negfiles: list of paths to negative image patches
@@ -283,10 +285,12 @@ class Trainer(object):
         :downsample: factor to downsample new models by if not passed to
                 constructor
         :step: initial training step value
+        :inpainter_mask_val: value that masked inputs to the inpainter are set to
         """
         self.global_step = tf.compat.v1.train.get_or_create_global_step()
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.step = step
+        self._inpainter_mask_val = inpainter_mask_val
 
         self.weights = {"class":class_loss_weight,
                         "exp":exponential_loss_weight,
@@ -423,6 +427,10 @@ class Trainer(object):
         mask = self.maskgen(inpt)
         inverse_mask = tf.keras.layers.Lambda(lambda x: 1-x)(mask)
         masked_im = tf.keras.layers.Multiply()([inpt, inverse_mask])
+        # inpainter_mask_val changes here
+        scaled_mask = tf.keras.layers.Lambda(lambda x: self._inpainter_mask_val*x)(mask)
+        masked_im = tf.keras.layers.Add()([masked_im, scaled_mask])
+        
         inpainted = self.inpainter(masked_im)
         masked_inpainted = tf.keras.layers.Multiply()([inpainted, mask])
         reconstructed = tf.keras.layers.Add()([masked_im, masked_inpainted])
@@ -567,13 +575,15 @@ class Trainer(object):
                 
         # also visualize predictions for the positive cases
         predicted_masks = self.maskgen.predict(x_pos)
-        predicted_inpaints = self.inpainter.predict(x_pos*(1-predicted_masks))
+        predicted_inpaints = self.inpainter.predict(x_pos*(1-predicted_masks) + \
+                                                    self._inpainter_mask_val*predicted_masks)
         reconstructed = x_pos*(1-predicted_masks) + \
                         predicted_masks*predicted_inpaints
     
         rgb_masks = np.concatenate([predicted_masks]*3, -1)
         concatenated = np.concatenate([x_pos, rgb_masks, 
-                                       predicted_inpaints, reconstructed],
+                                       predicted_inpaints,
+                                       reconstructed],
                                 axis=2)
         # also, run the classifier on the reconstructed images and
         # see whether it thinks an object is present
@@ -621,7 +631,8 @@ class Trainer(object):
                 "imshape":self._imshape,
                 "train_maskgen_on_all":self._train_maskgen_on_all,
                 "lr":self._lr,
-                "num_parallel_calls":self._num_parallel_calls
+                "num_parallel_calls":self._num_parallel_calls,
+                "inpainter_mask_val":self._inpainter_mask_val
                 }
         config_path = os.path.join(self.logdir, "config.yml")
         yaml.dump(config, open(config_path, "w"), default_flow_style=False)
