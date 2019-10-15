@@ -127,3 +127,14 @@ def pixelwise_variance(x):
     pixelwise_mean = tf.reduce_mean(x, 0)
     meandiff = x - tf.expand_dims(pixelwise_mean, 0)
     return tf.reduce_mean(meandiff**2)
+
+
+def total_variation_loss(x):
+    """
+    Input a batch of images; return mean total variation
+    loss.
+    
+    Check out https://en.wikipedia.org/wiki/Total_variation_denoising
+    """
+    vl = tf.image.total_variation(x)
+    return tf.reduce_mean(vl)

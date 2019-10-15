@@ -8,7 +8,7 @@ import yaml
 
 import decepticon
 from decepticon._losses import least_squares_gan_loss, build_style_model, compute_style_loss
-from decepticon._losses import pixelwise_variance
+from decepticon._losses import pixelwise_variance, total_variation_loss
 from decepticon.loaders import image_loader_dataset, classifier_training_dataset
 from decepticon.loaders import inpainter_training_dataset, circle_mask_dataset
 from decepticon._descriptions import loss_descriptions
@@ -17,11 +17,13 @@ from decepticon import _descriptions
 maskgen_lossnames = ["mask_generator_classifier_loss",
                      "mask_generator_exponential_loss",
                      "mask_generator_prior_loss",
+                     "mask_generator_tv_loss",
                      "mask_generator_total_loss"]
         
 inpaint_lossnames = ["inpainter_reconstruction_L1_loss",
                      "inpainter_discriminator_loss",
                      "inpainter_style_loss",
+                     "inpainter_tv_loss",
                      "inpainter_total_loss"]
 
 
@@ -29,7 +31,7 @@ inpaint_lossnames = ["inpainter_reconstruction_L1_loss",
 @tf.function
 def maskgen_training_step(opt, inpt_img, maskgen, classifier, 
                           inpainter, maskdisc=None, cls_weight=1, exp_weight=0.1,
-                          prior_weight=0.25):
+                          prior_weight=0.25, tv_weight=0):
     """
     TensorFlow function to perform one training step on the mask generator.
     
@@ -44,6 +46,7 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     :cls_weight: weight for classification loss (in paper: 12)
     :exp_weight: weight for exponential loss (in paper: 18)
     :prior_weight: weight for mask discriminator loss (in paper: 3)
+    :tv_weight: weight total variation loss (not in paper)
     
     Returns
     :cls_loss: classification loss for the batch
@@ -51,6 +54,9 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     :loss: total weighted loss for the batch
     :mask: batch masks (for use in mask buffer)
     """
+    input_shape = inpt_img.get_shape()
+    tv_norm = input_shape[1]*input_shape[2]
+    
     with tf.GradientTape() as tape:
         # predict a mask from the original image and mask it
         mask = maskgen(inpt_img)
@@ -73,14 +79,20 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
             prior_loss = -1*tf.reduce_sum(maskdisc(mask))
         else:
             prior_loss = 0
-        loss = cls_weight*cls_loss + exp_weight*exp_loss + prior_weight*prior_loss
+            
+        if tv_weight > 0:
+            tv_loss = total_variation_loss(mask)/tv_norm
+        else:
+            tv_loss = 0
+        loss = cls_weight*cls_loss + exp_weight*exp_loss + \
+                    prior_weight*prior_loss + tv_weight*tv_loss
         
     # compute gradients and update
     variables = maskgen.trainable_variables
     gradients = tape.gradient(loss, variables)
     opt.apply_gradients(zip(gradients, variables))
     
-    return cls_loss, exp_loss, prior_loss, loss, mask
+    return cls_loss, exp_loss, prior_loss, tv_loss, loss, mask
 
 
 @tf.function
@@ -109,7 +121,8 @@ def mask_discriminator_training_step(maskdisc, mask, prior_sample, opt):
 @tf.function
 def inpainter_training_step(opt, inpt_img, mask, inpainter,
                             disc, recon_weight=100,
-                            disc_weight=2, style_weight=0, style_model=None):
+                            disc_weight=2, style_weight=0, 
+                            tv_weight=0, style_model=None):
     """
     TensorFlow function to perform one training step on the inpainter.
     
@@ -120,9 +133,10 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
     :mask: batch of masks from mask buffer
     :inpainter: inpainting model
     :disc: discriminator model
-    :recon_weight: reconstruction loss weight
-    :disc_weight: discriminator loss weight
-    :style_weight: weight for style loss
+    :recon_weight: reconstruction loss weight (equations 6, 9)
+    :disc_weight: discriminator loss weight (equations 7, 9)
+    :style_weight: weight for style loss (equations 6, 9)
+    :tv_weight: weight for total variation loss (equation 9)
     :style_model: model to use for computing style representation
     
     Returns
@@ -130,6 +144,9 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
     :disc_loss: discriminator loss for the batch
     :loss: total weighted loss for the batch
     """
+    input_shape = inpt_img.get_shape()
+    tv_norm = input_shape[1]*input_shape[2]*input_shape[3]
+    
     with tf.GradientTape() as tape:
         # predict a mask from the original image and mask it
         #mask = maskgen(inpt_img)
@@ -153,16 +170,20 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
             style_loss = compute_style_loss(inpt_img, y, style_model)
         else:
             style_loss = 0
+        if tv_weight > 0:
+            tv_loss = total_variation_loss(y)/tv_norm
+        else:
+            tv_loss = 0
         
         loss = recon_weight*recon_loss + disc_weight*disc_loss + \
-                style_weight*style_loss
+                style_weight*style_loss + tv_weight*tv_loss
         
     # compute gradients and update
     variables = inpainter.trainable_variables
     gradients = tape.gradient(loss, variables)
     opt.apply_gradients(zip(gradients, variables))
     
-    return recon_loss, disc_loss, style_loss, loss
+    return recon_loss, disc_loss, style_loss, tv_loss, loss
 
 
 
@@ -230,7 +251,7 @@ class Trainer(object):
                  batch_size=64,
                  class_loss_weight=1, exponential_loss_weight=0.1,
                  reconstruction_weight=100, disc_weight=2, style_weight=0,
-                 prior_weight=0,
+                 prior_weight=0, inpainter_tv_weight=0, maskgen_tv_weight=0,
                  eval_pos=None, logdir=None, clip=10,
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
@@ -250,6 +271,8 @@ class Trainer(object):
         :disc_weight: weight for GAN loss on inpainter
         :style_weight: weight for neural style loss on inpainter
         :prior_weight: weight for mask discriminator loss
+        :inpainter_tv_weight: weight for total variation loss for inpainter
+        :maskgen_tv_weight: weight for total variation loss for mask generator
         :eval_pos: batch of positive images for evaluation
         :logdir: where to save tensorboard logs
         :clip: gradient clipping
@@ -270,7 +293,9 @@ class Trainer(object):
                         "recon":reconstruction_weight,
                         "disc":disc_weight,
                         "style":style_weight,
-                        "prior":prior_weight}
+                        "prior":prior_weight,
+                        "inpaint_tv":inpainter_tv_weight,
+                        "maskgen_tv":maskgen_tv_weight}
         self._clip = clip
         if style_weight > 0:
             self._style_model = build_style_model()
@@ -409,9 +434,11 @@ class Trainer(object):
         *maskgen_losses, mask = maskgen_training_step(
                 self._optimizers["mask"], x, self.maskgen, 
                 self.classifier, self.inpainter,
-                self.maskdisc,
-                self.weights["class"], self.weights["exp"],
-                self.weights["prior"])
+                maskdisc=self.maskdisc,
+                cls_weight=self.weights["class"], 
+                exp_weight=self.weights["exp"],
+                prior_weight=self.weights["prior"],
+                tv_weight=self.weights["maskgen_tv"])
         maskgen_losses = dict(zip(maskgen_lossnames, maskgen_losses))
         return maskgen_losses, mask
 
@@ -431,8 +458,11 @@ class Trainer(object):
         inpainter_losses = inpainter_training_step(
                 self._optimizers["inpainter"], x, mask, 
                 self.inpainter, self.discriminator, 
-                self.weights["recon"], self.weights["disc"],
-                self.weights["style"], self._style_model)
+                recon_weight=self.weights["recon"], 
+                disc_weight=self.weights["disc"],
+                style_weight=self.weights["style"], 
+                tv_weight=self.weights["inpaint_tv"],
+                style_model=self._style_model)
         inpainter_losses = dict(zip(inpaint_lossnames, inpainter_losses))
         return inpainter_losses
     
@@ -585,6 +615,8 @@ class Trainer(object):
                 "disc_weight":self.weights["disc"],
                 "style_weight":self.weights["style"],
                 "prior_weight":self.weights["prior"],
+                "inpainter_tv_weight":self.weights["inpaint_tv"],
+                "maskgen_tv_weight":self.weights["maskgen_tv"],
                 "clip":self._clip,
                 "imshape":self._imshape,
                 "train_maskgen_on_all":self._train_maskgen_on_all,
@@ -595,5 +627,5 @@ class Trainer(object):
         yaml.dump(config, open(config_path, "w"), default_flow_style=False)
    
    
-   
+
 
