@@ -1,5 +1,5 @@
 # markdown descriptions for tensorboard outputs go here
-
+from collections import defaultdict
 
 maskgen = """
 # Mask generator total loss
@@ -27,6 +27,13 @@ prior_loss = """
 # Discriminator loss for mask generator
 
 Helps bias mask generator toward compact masks
+"""
+maskgen_tv_loss = """
+# Total variation loss for mask generator
+"""
+
+inpainter_tv_loss = """
+# Total variation loss for inpainter
 """
 
 
@@ -95,14 +102,24 @@ disc_score_fake="""
 Pixel-wise score for fake parts of the image
 """
 
-loss_descriptions = {
-                    "mask_generator_total_loss":maskgen,
-                    "mask_generator_classifier_loss":cls_loss,
-                    "mask_generator_exponential_loss":exp_loss,
-                    "mask_generator_prior_loss":prior_loss,
-                    "inpainter_style_loss":style_loss,
-                    "inpainter_total_loss":inpainter_total_loss,
-                    "inpainter_reconstruction_L1_loss":recon_loss,
-                    "discriminator_GAN_loss":disc_loss,
-                    "mask_discriminator_loss":maskdisc_loss
-                    }
+mask_variance="""
+# Mask Variance
+
+The average variance of each pixel across a batch of masks.
+
+* This isn't used as a loss, but in cases where we've seen mode collapse we'd expect it to drop to zero.
+"""
+
+loss_descriptions = defaultdict(str)
+loss_descriptions["mask_generator_total_loss"] = maskgen
+loss_descriptions["mask_generator_classifier_loss"] = cls_loss
+loss_descriptions["mask_generator_exponential_loss"] = exp_loss
+loss_descriptions["mask_generator_prior_loss"] = prior_loss
+loss_descriptions["inpainter_style_loss"] = style_loss
+loss_descriptions["inpainter_total_loss"] = inpainter_total_loss
+loss_descriptions["inpainter_reconstruction_L1_loss"] = recon_loss
+loss_descriptions["discriminator_GAN_loss"] = disc_loss
+loss_descriptions["mask_discriminator_loss"] = maskdisc_loss
+loss_descriptions["mask_variance"] = mask_variance
+loss_descriptions["mask_generator_tv_loss"] = maskgen_tv_loss
+loss_descriptions["inpainter_tv_loss"] = inpainter_tv_loss

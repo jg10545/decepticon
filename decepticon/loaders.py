@@ -34,6 +34,30 @@ def _circle_mask_generator(imshape, intensity=3):
         yield np.expand_dims(mask, 2)
         
         
+def _splotch_mask_generator(imshape):
+    """
+    Generator that yields splotchy masks
+    
+    :imshape: 2-tuple of image dimensions
+    """
+    xx, yy = np.meshgrid(np.arange(imshape[0]), np.arange(imshape[1]))
+    # length scale
+    scale = (imshape[0]+imshape[1])/30
+    while True:
+        num_circles = np.random.negative_binomial(1, 0.2)
+        mask = np.zeros(imshape, dtype=np.float32)
+        x0 = np.random.randint(0, imshape[1])
+        y0 = np.random.randint(0, imshape[0])
+        for n in range(num_circles):
+            a = 10 + np.random.exponential(scale)
+            b = 10 + np.random.exponential(scale)
+            clip = ((xx - x0)/a)**2 + ((yy - y0)/b)**2 <= 1
+            mask[clip] = 1
+            x0 += np.random.randint(-a,a)
+            y0 += np.random.randint(-b,b)
+            
+        yield np.expand_dims(mask, 2)
+        
 def circle_mask_dataset(imshape=(80,80),intensity=3,
                         batch_size=32, prefetch=True):
     """
@@ -44,7 +68,8 @@ def circle_mask_dataset(imshape=(80,80),intensity=3,
     :batch_size: size of batches
     """
     def _gen():
-        return _circle_mask_generator(imshape, intensity)
+        #return _circle_mask_generator(imshape, intensity)
+        return _splotch_mask_generator(imshape)
         
     maskgen_ds = tf.data.Dataset.from_generator(_gen, 
                                             tf.float32,
