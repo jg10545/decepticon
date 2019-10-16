@@ -31,7 +31,7 @@ inpaint_lossnames = ["inpainter_reconstruction_L1_loss",
 @tf.function
 def maskgen_training_step(opt, inpt_img, maskgen, classifier, 
                           inpainter, maskdisc=None, cls_weight=1, exp_weight=0.1,
-                          prior_weight=0.25, tv_weight=0):
+                          prior_weight=0.25, tv_weight=0, inpainter_mask_val=0):
     """
     TensorFlow function to perform one training step on the mask generator.
     
@@ -42,11 +42,12 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     :maskgen: mask generator model
     :classifier: classifier model
     :inpainter: inpainting model
-    :maskdisc
+    :maskdisc: 
     :cls_weight: weight for classification loss (in paper: 12)
     :exp_weight: weight for exponential loss (in paper: 18)
     :prior_weight: weight for mask discriminator loss (in paper: 3)
     :tv_weight: weight total variation loss (not in paper)
+    :inpainter_mask_val:
     
     Returns
     :cls_loss: classification loss for the batch
@@ -61,10 +62,11 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
         # predict a mask from the original image and mask it
         mask = maskgen(inpt_img)
         inverse_mask = 1-mask
-        masked_inpt = inpt_img*inverse_mask
+        #masked_inpt = inpt_img*inverse_mask
+        masked_inpt = inpt_img*inverse_mask 
         
         # fill in with inpainter
-        inpainted = inpainter(masked_inpt)
+        inpainted = inpainter(masked_inpt + inpainter_mask_val*mask)
         y = masked_inpt + mask*inpainted
         
         
@@ -153,10 +155,10 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
         # predict a mask from the original image and mask it
         #mask = maskgen(inpt_img)
         inverse_mask = 1 - mask
-        masked_inpt = inpt_img*inverse_mask + inpainter_mask_val*mask
+        masked_inpt = inpt_img*inverse_mask 
         
         # fill in with inpainter
-        inpainted = inpainter(masked_inpt)
+        inpainted = inpainter(masked_inpt + inpainter_mask_val*mask)
         y = masked_inpt + mask*inpainted
         
         
@@ -446,7 +448,8 @@ class Trainer(object):
                 cls_weight=self.weights["class"], 
                 exp_weight=self.weights["exp"],
                 prior_weight=self.weights["prior"],
-                tv_weight=self.weights["maskgen_tv"])
+                tv_weight=self.weights["maskgen_tv"],
+                inpainter_mask_val=self._inpainter_mask_val)
         maskgen_losses = dict(zip(maskgen_lossnames, maskgen_losses))
         return maskgen_losses, mask
 
@@ -470,7 +473,8 @@ class Trainer(object):
                 disc_weight=self.weights["disc"],
                 style_weight=self.weights["style"], 
                 tv_weight=self.weights["inpaint_tv"],
-                style_model=self._style_model)
+                style_model=self._style_model,
+                inpainter_mask_val=self._inpainter_mask_val)
         inpainter_losses = dict(zip(inpaint_lossnames, inpainter_losses))
         return inpainter_losses
     
@@ -570,19 +574,17 @@ class Trainer(object):
         Run a set of evaluation metrics. Requires validation data and a log
         directory to be set.
         """
-        x_pos = self.eval_pos
-
+        x = self.eval_pos
                 
-        # also visualize predictions for the positive cases
-        predicted_masks = self.maskgen.predict(x_pos)
-        predicted_inpaints = self.inpainter.predict(x_pos*(1-predicted_masks) + \
-                                                    self._inpainter_mask_val*predicted_masks)
-        reconstructed = x_pos*(1-predicted_masks) + \
-                        predicted_masks*predicted_inpaints
+        # visualize predictions for the positive cases
+        mask = self.maskgen.predict(x)
+        inpainted = self.inpainter.predict(x*(1-mask) )#+ \
+                                           #self._inpainter_mask_val*mask)
+        reconstructed = x*(1-mask) + mask*inpainted
     
-        rgb_masks = np.concatenate([predicted_masks]*3, -1)
-        concatenated = np.concatenate([x_pos, rgb_masks, 
-                                       predicted_inpaints,
+        rgb_masks = np.concatenate([mask]*3, -1)
+        concatenated = np.concatenate([x, rgb_masks, 
+                                       inpainted,
                                        reconstructed],
                                 axis=2)
         # also, run the classifier on the reconstructed images and
@@ -591,26 +593,26 @@ class Trainer(object):
         object_score = 1 - cls_outs[:,0]
         # while we're at it let's see about testing the discriminator too
         dsc_outs = self.discriminator.predict(reconstructed)
-        dsc_mask = dsc_outs[predicted_masks.astype(bool)]
-        dsc_unmask = dsc_outs[(1-predicted_masks).astype(bool)]
+        dsc_mask = dsc_outs[mask.astype(bool)]
+        dsc_unmask = dsc_outs[(1-mask).astype(bool)]
         
         
         # record everything
         tf.compat.v2.summary.image("input__mask__inpainted__reconstructed", 
                              concatenated, max_outputs=5,
-                             step=self.global_step,
+                             step=self.step,
                              description=_descriptions.image_display)
         tf.compat.v2.summary.histogram("reconstructed_classifier_score", 
                                          object_score,
-                                         step=self.global_step,
+                                         step=self.step,
                                          description=_descriptions.reconstructed_classifier_score)
         tf.compat.v2.summary.histogram("discriminator_score_real", 
                                          dsc_unmask,
-                                         step=self.global_step,
+                                         step=self.step,
                                          description=_descriptions.disc_score_real)
         tf.compat.v2.summary.histogram("discriminator_score_fake", 
                                          dsc_mask,
-                                         step=self.global_step,
+                                         step=self.step,
                                          description=_descriptions.disc_score_fake )
             
     def _save_config(self):
