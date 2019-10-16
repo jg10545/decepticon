@@ -31,7 +31,7 @@ inpaint_lossnames = ["inpainter_reconstruction_L1_loss",
 @tf.function
 def maskgen_training_step(opt, inpt_img, maskgen, classifier, 
                           inpainter, maskdisc=None, cls_weight=1, exp_weight=0.1,
-                          prior_weight=0.25, tv_weight=0, inpainter_mask_val=0):
+                          prior_weight=0.25, tv_weight=0):
     """
     TensorFlow function to perform one training step on the mask generator.
     
@@ -47,7 +47,6 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     :exp_weight: weight for exponential loss (in paper: 18)
     :prior_weight: weight for mask discriminator loss (in paper: 3)
     :tv_weight: weight total variation loss (not in paper)
-    :inpainter_mask_val:
     
     Returns
     :cls_loss: classification loss for the batch
@@ -66,7 +65,7 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
         masked_inpt = inpt_img*inverse_mask 
         
         # fill in with inpainter
-        inpainted = inpainter(masked_inpt + inpainter_mask_val*mask)
+        inpainted = inpainter(tf.concat([masked_inpt, mask], 3))
         y = masked_inpt + mask*inpainted
         
         
@@ -124,8 +123,7 @@ def mask_discriminator_training_step(maskdisc, mask, prior_sample, opt):
 def inpainter_training_step(opt, inpt_img, mask, inpainter,
                             disc, recon_weight=100,
                             disc_weight=2, style_weight=0, 
-                            tv_weight=0, style_model=None,
-                            inpainter_mask_val=0):
+                            tv_weight=0, style_model=None):
     """
     TensorFlow function to perform one training step on the inpainter.
     
@@ -141,7 +139,6 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
     :style_weight: weight for style loss (equations 6, 9)
     :tv_weight: weight for total variation loss (equation 9)
     :style_model: model to use for computing style representation
-    :inpainter_mask_val: value to set masked areas to
     
     Returns
     :recon_loss: reconstruction loss for the batch
@@ -158,7 +155,7 @@ def inpainter_training_step(opt, inpt_img, mask, inpainter,
         masked_inpt = inpt_img*inverse_mask 
         
         # fill in with inpainter
-        inpainted = inpainter(masked_inpt + inpainter_mask_val*mask)
+        inpainted = inpainter(tf.concat([masked_inpt, mask], 3))
         y = masked_inpt + mask*inpainted
         
         
@@ -219,7 +216,7 @@ def discriminator_training_step(opt, inpt_img, mask, inpainter,
         masked_inpt = inpt_img*inverse_mask
         
         # fill in with inpainter
-        inpainted = inpainter(masked_inpt)
+        inpainted = inpainter(tf.concat([masked_inpt, mask], 3))
         y = masked_inpt + mask*inpainted
         
         
@@ -259,7 +256,7 @@ class Trainer(object):
                  eval_pos=None, logdir=None, clip=10,
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
-                 downsample=2, step=0, inpainter_mask_val=0):
+                 downsample=2, step=0):
         """
         :posfiles: list of paths to positive image patches
         :negfiles: list of paths to negative image patches
@@ -287,12 +284,10 @@ class Trainer(object):
         :downsample: factor to downsample new models by if not passed to
                 constructor
         :step: initial training step value
-        :inpainter_mask_val: value that masked inputs to the inpainter are set to
         """
         self.global_step = tf.compat.v1.train.get_or_create_global_step()
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.step = step
-        self._inpainter_mask_val = inpainter_mask_val
 
         self.weights = {"class":class_loss_weight,
                         "exp":exponential_loss_weight,
@@ -322,7 +317,8 @@ class Trainer(object):
         if classifier is None:
             classifier = decepticon.build_classifier(downsample=downsample)
         if inpainter is None:
-            inpainter = decepticon.build_inpainter(downsample=downsample)
+            inpainter = decepticon.build_inpainter(input_shape=(None, None, 4),
+                                                   downsample=downsample)
         if discriminator is None:
             discriminator = decepticon.build_discriminator(downsample=downsample)
         if (maskdisc is None) & (prior_weight > 0):
@@ -430,10 +426,11 @@ class Trainer(object):
         inverse_mask = tf.keras.layers.Lambda(lambda x: 1-x)(mask)
         masked_im = tf.keras.layers.Multiply()([inpt, inverse_mask])
         # inpainter_mask_val changes here
-        scaled_mask = tf.keras.layers.Lambda(lambda x: self._inpainter_mask_val*x)(mask)
-        masked_im = tf.keras.layers.Add()([masked_im, scaled_mask])
+        #scaled_mask = tf.keras.layers.Lambda(lambda x: self._inpainter_mask_val*x)(mask)
+        #masked_im = tf.keras.layers.Add()([masked_im, scaled_mask])
+        concatenated_masked_im = tf.keras.layers.Concatenate(axis=-1)([masked_im, mask])
         
-        inpainted = self.inpainter(masked_im)
+        inpainted = self.inpainter(concatenated_masked_im)
         masked_inpainted = tf.keras.layers.Multiply()([inpainted, mask])
         reconstructed = tf.keras.layers.Add()([masked_im, masked_inpainted])
         self.full_model = tf.keras.Model(inpt, reconstructed)
@@ -448,8 +445,7 @@ class Trainer(object):
                 cls_weight=self.weights["class"], 
                 exp_weight=self.weights["exp"],
                 prior_weight=self.weights["prior"],
-                tv_weight=self.weights["maskgen_tv"],
-                inpainter_mask_val=self._inpainter_mask_val)
+                tv_weight=self.weights["maskgen_tv"])
         maskgen_losses = dict(zip(maskgen_lossnames, maskgen_losses))
         return maskgen_losses, mask
 
@@ -473,8 +469,7 @@ class Trainer(object):
                 disc_weight=self.weights["disc"],
                 style_weight=self.weights["style"], 
                 tv_weight=self.weights["inpaint_tv"],
-                style_model=self._style_model,
-                inpainter_mask_val=self._inpainter_mask_val)
+                style_model=self._style_model)
         inpainter_losses = dict(zip(inpaint_lossnames, inpainter_losses))
         return inpainter_losses
     
@@ -578,7 +573,7 @@ class Trainer(object):
                 
         # visualize predictions for the positive cases
         mask = self.maskgen.predict(x)
-        inpainted = self.inpainter.predict(x*(1-mask) )#+ \
+        inpainted = self.inpainter.predict(tf.concat([x*(1-mask), mask], -1) )#+ \
                                            #self._inpainter_mask_val*mask)
         reconstructed = x*(1-mask) + mask*inpainted
     
@@ -633,8 +628,7 @@ class Trainer(object):
                 "imshape":self._imshape,
                 "train_maskgen_on_all":self._train_maskgen_on_all,
                 "lr":self._lr,
-                "num_parallel_calls":self._num_parallel_calls,
-                "inpainter_mask_val":self._inpainter_mask_val
+                "num_parallel_calls":self._num_parallel_calls
                 }
         config_path = os.path.join(self.logdir, "config.yml")
         yaml.dump(config, open(config_path, "w"), default_flow_style=False)
