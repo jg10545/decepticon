@@ -43,7 +43,7 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     :maskgen: mask generator model
     :classifier: classifier model
     :inpainter: inpainting model
-    :maskdisc: 
+    :maskdisc: mask discriminator model, if using one
     :cls_weight: weight for classification loss (in paper: 12)
     :exp_weight: weight for exponential loss (in paper: 18)
     :prior_weight: weight for mask discriminator loss (in paper: 3)
@@ -52,6 +52,8 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     Returns
     :cls_loss: classification loss for the batch
     :exp_loss: exponential loss for the batch
+    :prior_loss: loss from the mask discriminator for the batch
+    :tv_loss: total variation loss from the batch
     :loss: total weighted loss for the batch
     :mask: batch masks (for use in mask buffer)
     """
@@ -126,12 +128,13 @@ def inpainter_training_step(inpaint_opt, disc_opt, inpt_img, mask, inpainter,
                             disc_weight=2, style_weight=0, 
                             tv_weight=0, style_model=None):
     """
-    TensorFlow function to perform one training step on the inpainter.
+    TensorFlow function to perform one training step on the inpainter as well
+    as the inpainter's discriminator.
     
     NOT currently set up for multi-class training.
     
-    :inpaint_opt: keras optimizer
-    :disc_opt:
+    :inpaint_opt: keras optimizer for inpainter
+    :disc_opt: keras optimizer for discriminator
     :input_img: batch of input images
     :mask: batch of masks from mask buffer
     :inpainter: inpainting model
@@ -144,8 +147,11 @@ def inpainter_training_step(inpaint_opt, disc_opt, inpt_img, mask, inpainter,
     
     Returns
     :recon_loss: reconstruction loss for the batch
-    :disc_loss: discriminator loss for the batch
+    :disc_loss: inpainter loss from the discriminator 
+    :style_loss: neural style loss for the batch
+    :tv_loss: total variation loss for the batch
     :loss: total weighted loss for the batch
+    :d_loss: discriminator loss
     """
     input_shape = inpt_img.get_shape()
     tv_norm = input_shape[1]*input_shape[2]*input_shape[3]
@@ -253,7 +259,6 @@ class Trainer(object):
                 constructor
         :step: initial training step value
         """
-        #self.global_step = tf.compat.v1.train.get_or_create_global_step()
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.step = step
         self._batch_size = batch_size
