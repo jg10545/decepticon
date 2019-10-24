@@ -685,7 +685,8 @@ class Trainer(object):
                 "lr":self._lr,
                 "lr_decay":self._lr_decay,
                 "num_parallel_calls":self._num_parallel_calls,
-                "inpaint":self._inpaint
+                "inpaint":self._inpaint,
+                "random_buffer":self._random_buffer
                 }
         config_path = os.path.join(self.logdir, "config.yml")
         yaml.dump(config, open(config_path, "w"), default_flow_style=False)
