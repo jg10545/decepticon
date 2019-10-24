@@ -32,7 +32,7 @@ inpaint_lossnames = ["inpainter_reconstruction_L1_loss",
 @tf.function
 def maskgen_training_step(opt, inpt_img, maskgen, classifier, 
                           inpainter, maskdisc=None, cls_weight=1, exp_weight=0.1,
-                          prior_weight=0.25, tv_weight=0):
+                          prior_weight=0.25, tv_weight=0, inpaint=True):
     """
     TensorFlow function to perform one training step on the mask generator.
     
@@ -48,6 +48,8 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     :exp_weight: weight for exponential loss (in paper: 18)
     :prior_weight: weight for mask discriminator loss (in paper: 3)
     :tv_weight: weight total variation loss (not in paper)
+    :inpaint: if True, fill in the mask using the inpainter before computing
+        classification loss (the way they did it in the paper)
     
     Returns
     :cls_loss: classification loss for the batch
@@ -64,16 +66,17 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
         # predict a mask from the original image and mask it
         mask = maskgen(inpt_img)
         inverse_mask = 1-mask
-        #masked_inpt = inpt_img*inverse_mask
         masked_inpt = inpt_img*inverse_mask 
         
-        # fill in with inpainter
-        inpainted = inpainter(tf.concat([masked_inpt, mask], 3))
-        y = masked_inpt + mask*inpainted
-        
-        
+        if inpaint:
+            # fill in with inpainter
+            inpainted = inpainter(tf.concat([masked_inpt, mask], 3))
+            y = masked_inpt + mask*inpainted
+        else:
+            y = masked_inpt
         # run masked image through classifier
         softmax_out = classifier(y)
+            
     
         # compute losses
         cls_loss = tf.reduce_mean(-1*tf.math.log(softmax_out[:,0] + K.epsilon()))
@@ -228,7 +231,7 @@ class Trainer(object):
                  eval_pos=None, logdir=None, clip=10,
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
-                 downsample=2, step=0):
+                 downsample=2, step=0, inpaint=True, random_buffer=False):
         """
         :posfiles: list of paths to positive image patches
         :negfiles: list of paths to negative image patches
@@ -258,11 +261,16 @@ class Trainer(object):
         :downsample: factor to downsample new models by if not passed to
                 constructor
         :step: initial training step value
+        :inpaint: if True, fill in the mask using the inpainter during the mask
+                generator training step (like they did in the paper)
+        :random_buffer: use mask prior instead of actual masks for training inpainter
         """
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.step = step
         self._batch_size = batch_size
         self._clip = clip
+        self._inpaint = inpaint
+        self._random_buffer = random_buffer
 
         # ------ RECORD LOSS FUNCTION WEIGHTS ------
         self.weights = {"class":class_loss_weight,
@@ -437,7 +445,8 @@ class Trainer(object):
                 cls_weight=self.weights["class"], 
                 exp_weight=self.weights["exp"],
                 prior_weight=self.weights["prior"],
-                tv_weight=self.weights["maskgen_tv"])
+                tv_weight=self.weights["maskgen_tv"],
+                inpaint=self._inpaint)
         maskgen_losses = dict(zip(maskgen_lossnames, maskgen_losses))
         return maskgen_losses, mask
 
@@ -474,8 +483,17 @@ class Trainer(object):
         
         """
         mask_buffer = []
-        for x in self._maskgen_dataset(False, maxsize):
-            mask_buffer.append(self.maskgen(x).numpy())
+        if self._random_buffer:
+            ds = circle_mask_dataset(self._imshape, 
+                                        batch_size=self._batch_size, 
+                                        prefetch=1)
+            for e, x in enumerate(ds):
+                mask_buffer.append(x.numpy())
+                if (e+1)*self._batch_size >= maxsize:
+                    break
+        else:
+            for x in self._maskgen_dataset(False, maxsize):
+                mask_buffer.append(self.maskgen(x).numpy())
         return np.concatenate(mask_buffer, axis=0)
     
     def fit_mask_generator(self, epochs=1, progressbar=True, evaluate=True):
@@ -666,7 +684,8 @@ class Trainer(object):
                 "train_maskgen_on_all":self._train_maskgen_on_all,
                 "lr":self._lr,
                 "lr_decay":self._lr_decay,
-                "num_parallel_calls":self._num_parallel_calls
+                "num_parallel_calls":self._num_parallel_calls,
+                "inpaint":self._inpaint
                 }
         config_path = os.path.join(self.logdir, "config.yml")
         yaml.dump(config, open(config_path, "w"), default_flow_style=False)
