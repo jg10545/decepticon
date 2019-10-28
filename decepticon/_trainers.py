@@ -356,7 +356,7 @@ class Trainer(object):
         ds = image_loader_dataset(files, 
                                   batch_size=bs,
                                   repeat=False,
-                                  shuffle=1,
+                                  shuffle=False,
                                   augment=False) 
         for x in ds:
             x = x.numpy()
@@ -425,9 +425,6 @@ class Trainer(object):
         mask = self.maskgen(inpt)
         inverse_mask = tf.keras.layers.Lambda(lambda x: 1-x)(mask)
         masked_im = tf.keras.layers.Multiply()([inpt, inverse_mask])
-        # inpainter_mask_val changes here
-        #scaled_mask = tf.keras.layers.Lambda(lambda x: self._inpainter_mask_val*x)(mask)
-        #masked_im = tf.keras.layers.Add()([masked_im, scaled_mask])
         concatenated_masked_im = tf.keras.layers.Concatenate(axis=-1)([masked_im, mask])
         
         inpainted = self.inpainter(concatenated_masked_im)
@@ -603,13 +600,25 @@ class Trainer(object):
                                evaluate=evaluate)
             
             # save all the component models
-            if (save) and (self.logdir is not None):
-                self.maskgen.save(os.path.join(self.logdir, "mask_generator.h5"))
-                self.inpainter.save(os.path.join(self.logdir, "inpainter.h5"))
-                self.discriminator.save(os.path.join(self.logdir, "discriminator.h5"))
-                self.classifier.save(os.path.join(self.logdir, "classifier.h5"))
-                if self.maskdisc is not None:
-                    self.maskdisc.save(os.path.join(self.logdir, "mask_discriminator.h5"))
+            if save:
+                self.save()
+                
+                
+
+    def save(self, logdir=None):
+        """
+        Save all model components as h5 files
+        """
+        if logdir is None:
+            logdir = self.logdir
+        
+        self.maskgen.save(os.path.join(self.logdir, "mask_generator.h5"))
+        self.inpainter.save(os.path.join(self.logdir, "inpainter.h5"))
+        self.discriminator.save(os.path.join(self.logdir, "discriminator.h5"))
+        self.classifier.save(os.path.join(self.logdir, "classifier.h5"))
+        if self.maskdisc is not None:
+            self.maskdisc.save(os.path.join(self.logdir, "mask_discriminator.h5"))
+            
 
                 
     def _record_losses(self, **lossvals):

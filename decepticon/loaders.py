@@ -114,7 +114,7 @@ def _augment(im):
     return im
 
 
-def image_loader_dataset(filepaths, batch_size=64, repeat=False, shuffle=1000, 
+def image_loader_dataset(filepaths, batch_size=64, repeat=False, shuffle=True, 
                         augment=True, num_parallel_calls=None, prefetch=True):
     """
     Barebones function for building a tensorflow Dataset to load,
@@ -123,11 +123,15 @@ def image_loader_dataset(filepaths, batch_size=64, repeat=False, shuffle=1000,
     :filepaths: list of paths to files
     :batch_size: size of batches; set to None to skip batching
     :repeat: whether to repeat when iteration reaches the end
-    :shuffle: size of shuffle queue. set to False to skip shuffling
+    :shuffle: whether to shuffle the order in which files are loaded
     :augment: whether to augment the data
     :num_parallel_calls: number of threads to use for loading/decoding images
     """
     ds = tf.data.Dataset.from_tensor_slices(filepaths)
+    
+    if shuffle:
+        ds = ds.shuffle(len(filepaths))
+        
     ds = ds.map(_load_img, num_parallel_calls=num_parallel_calls)
     
     if augment:
@@ -135,8 +139,6 @@ def image_loader_dataset(filepaths, batch_size=64, repeat=False, shuffle=1000,
     
     if repeat:
         ds = ds.repeat()    
-    if shuffle:
-        ds = ds.shuffle(shuffle)
     if batch_size:
         ds = ds.batch(batch_size)
     if prefetch:

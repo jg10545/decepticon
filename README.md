@@ -32,7 +32,7 @@ Shetty *et al*'s model has several components; `decepticon` expects a `keras` Mo
 | ---- | ---- | ---- | ---- | ---- |
 | **mask generator** | fully-convolutional network that generates a mask from an input image | `(None, None, None, 3)` | `(None, None, None, 1)` | `decepticon.build_mask_generator()` |
 | **classifier** | standard convolutional classifier that maps an image to a probability over categories| `(None, None, None, 3)` | `(None, num_classes+1)` | `decepticon.build_classifier()` |
-| **inpainter** | fully-convolutional network that inputs a partially-masked image and attempts to generate the original unmasked version (like a  denoising autoencoder or [context encoder](https://arxiv.org/abs/1604.07379))| `(None, None, None, 3)` | `(None, None, None, 3)` | `decepticon.build_inpainter()` |
+| **inpainter** | fully-convolutional network that inputs a partially-masked image (with a 4th channel containing the mask) and attempts to generate the original unmasked version (like a  denoising autoencoder or [context encoder](https://arxiv.org/abs/1604.07379))| `(None, None, None, 4)` | `(None, None, None, 3)` | `decepticon.build_inpainter()` |
 | **discriminator** | fully-convolutional network that inputs an image and makes a pixel-wise assessment about whether the image is real or fake| `(None, None, None, 3)` | `(None, None, None, 1)` | `decepticon.build_discriminator()` |
 | **mask discriminator** | *not yet implemented*|  |  | |
 
@@ -76,7 +76,7 @@ trainer.pretrain_classifier(epochs=10)
 
 #### Inpainter
 
-We've had better luck with the end-to-end model if the inpainter is pretrained for a few epochs. You can use `decepticon.loaders.inpainter_training_dataset()` to train the inpainter directly or use `trainer.pretrain_inpainter()`:
+We've had better luck with the end-to-end model (in some cases) if the inpainter is pretrained for a few epochs. You can use `decepticon.loaders.inpainter_training_dataset()` to train the inpainter directly or use `trainer.pretrain_inpainter()`:
 
 ```{python}
 trainer.pretrain_inpainter(epochs=10)
