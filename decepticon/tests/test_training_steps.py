@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import tensorflow as tf
-from decepticon._trainers import maskgen_training_step, inpainter_training_step
+from decepticon._training_steps import maskgen_training_step, inpainter_training_step
 #from decepticon._trainers import discriminator_training_step
 
 tf.enable_v2_behavior()

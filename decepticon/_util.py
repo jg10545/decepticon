@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
+import numpy as np
 import tensorflow as tf
 import yaml
 import os
+from PIL import Image
 
 from decepticon._trainers import Trainer
 
@@ -42,3 +44,17 @@ def load_trainer_from_saved(posfiles, negfiles, old_dir, new_dir,
     return Trainer(posfiles, negfiles, 
                    logdir=new_dir, **config)
 
+
+def _load_to_array(img):
+    """
+    input a file path, PIL image or numpy array;
+    return a numpy array
+    """
+    if isinstance(img, str):
+        img = Image.open(img)
+    if isinstance(img, Image.Image):
+        img = np.array(img)
+    if img.dtype == np.uint8:
+        img = img.astype(np.float32)/255
+    return img
+    
