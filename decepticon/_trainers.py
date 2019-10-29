@@ -13,7 +13,6 @@ from decepticon._losses import build_style_model, pixelwise_variance
 from decepticon.loaders import image_loader_dataset, classifier_training_dataset
 from decepticon.loaders import inpainter_training_dataset, circle_mask_dataset
 from decepticon._descriptions import loss_descriptions
-from decepticon._util import _load_to_array
 from decepticon import _descriptions
 
 from decepticon._training_steps import maskgen_training_step, mask_discriminator_training_step, inpainter_training_step
@@ -527,6 +526,7 @@ class Trainer(object):
         
         Results returned as PIL Image.
         """
+        from decepticon._util import _load_to_array
         img = _load_to_array(img)
         output = self._fullmodel(img).numpy()
         return Image.fromarray((255*output).astype(np.uint8))
