@@ -521,15 +521,32 @@ class Trainer(object):
    
     def remove_objects(self, img):
         """
-        Pass a path to an image, a PIL Image object, or a
-        numpy array and run the full model.
+        Pass a path to an image or a PIL Image object and run the 
+        full model.
         
         Results returned as PIL Image.
         """
-        from decepticon._util import _load_to_array
-        img = _load_to_array(img)
-        output = self._fullmodel(img).numpy()
-        return Image.fromarray((255*output).astype(np.uint8))
+        if isinstance(img, str):
+            img = Image.open(img)
+            
+        # 
+        W, H = img.size
+        Wnew, Hnew = img.size
+
+        if Wnew%8 != 0: Wnew = 8*(Wnew//8 + 1)
+        if Hnew%8 != 0: Hnew = 8*(Hnew//8 + 1)
+        img_arr = np.expand_dims(
+            np.array(img.crop([0, 0, Wnew, Hnew])), 0).astype(np.float32)/255
+        
+        mask = self.maskgen.predict(img_arr)
+        masked_img = np.concatenate([
+                img_arr*(1-mask),
+                mask], -1)
+        inpainted = self.inpainter.predict(masked_img)
+        reconstructed = img_arr*(1-mask) + inpainted*mask
+        
+        recon_img =  Image.fromarray((255*reconstructed[0]).astype(np.uint8))
+        return recon_img.crop([0, 0, W, H])
     
     def __call__(self, img):
         self.remove_objects.__doc__
