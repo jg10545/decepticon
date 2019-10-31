@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import tensorflow as tf
-from decepticon._trainers import maskgen_training_step, inpainter_training_step
-from decepticon._trainers import discriminator_training_step
+from decepticon._training_steps import maskgen_training_step, inpainter_training_step
+#from decepticon._trainers import discriminator_training_step
 
-tf.enable_eager_execution()
+tf.enable_v2_behavior()
 
 """
 
@@ -33,8 +33,9 @@ output = tf.keras.layers.Dense(2, activation="softmax")(net)
 classifier = tf.keras.Model(inpt, output)
 
 # INPAINTER
-output = tf.keras.layers.Conv2D(3, 1, activation="sigmoid")(inpt)
-inpainter = tf.keras.Model(inpt, output)
+inp_inpt = tf.keras.layers.Input((None, None, 4))
+output = tf.keras.layers.Conv2D(3, 1, activation="sigmoid")(inp_inpt)
+inpainter = tf.keras.Model(inp_inpt, output)
 
 # DISCRIMINATOR
 output = tf.keras.layers.Conv2D(1, 1, activation="sigmoid")(inpt)
@@ -42,7 +43,8 @@ discriminator = tf.keras.Model(inpt, output)
 
 
 def test_maskgen_training_step():
-    cls_loss, exp_loss, prior_loss, loss, mask = maskgen_training_step(opt, input_img,
+    cls_loss, exp_loss, prior_loss, tv_loss, loss, mask = maskgen_training_step(
+                                            opt, input_img,
                                             maskgen, classifier, inpainter)
     
     maskshape = mask.get_shape().as_list()
@@ -54,16 +56,20 @@ def test_maskgen_training_step():
     
     
 def test_inpainter_training_step():
-    recon_loss, disc_loss, style_loss, loss = inpainter_training_step(opt, input_img, mask,
+    recon_loss, disc_loss, style_loss, tv_loss, loss, d_loss = inpainter_training_step(
+                                            opt, opt, input_img, mask,
                                             inpainter, discriminator)
     assert recon_loss.numpy().dtype == np.float32
     assert disc_loss.numpy().dtype == np.float32
     assert loss.numpy().dtype == np.float32
     
     
-    
+"""
+obsolete, as discriminator_training_step() has been rolled into
+inpainter_training_step()
+
 def test_discriminator_training_step():
     loss = discriminator_training_step(opt, input_img, mask,
                                        inpainter, discriminator)
     assert loss.numpy().dtype == np.float32
-    
+""" 
