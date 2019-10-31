@@ -20,7 +20,7 @@ We've been testing using Python 3.6 and TensorFlow 1.14.
 
 ## Example
 
-On the [Kaggle "Ships in Satellite Imagery](https://www.kaggle.com/rhammell/ships-in-satellite-imagery) dataset:
+On the [Kaggle "Ships in Satellite Imagery"](https://www.kaggle.com/rhammell/ships-in-satellite-imagery) dataset:
 
 ### Input
 
