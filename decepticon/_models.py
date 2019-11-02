@@ -204,7 +204,7 @@ def InpainterUpsampler(input_shape=(None, None, 256), downsample=1, instance_nor
     return tf.keras.Model(inpt, net)
 
 
-def build_inpainter(input_shape=(None, None, 3), downsample=1, instance_norm=False):
+def build_inpainter(input_shape=(None, None, 4), downsample=1, instance_norm=False):
     """
     Build the full inpainting network
     
