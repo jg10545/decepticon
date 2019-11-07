@@ -138,3 +138,29 @@ def total_variation_loss(x):
     """
     vl = tf.image.total_variation(x)
     return tf.reduce_mean(vl)
+
+
+def compute_gradient_penalty(real, fake, discriminator):
+    """
+    As described in "Improved Training of Wasserstein GANs"
+    """
+    eps = tf.random.uniform((), minval=0, maxval=1)
+    with tf.GradientTape() as tape:
+        # interpolate image batch
+        x = eps*real + (1-eps)*fake
+        tape.watch(x)
+        disc_out = discriminator(x)
+        # average outputs for pixelwise discriminator
+        if len(disc_out.get_shape()) > 2:
+            disc_out = tf.reduce_mean(disc_out, (1,2,3))
+    # compute gradient with respect to interpolated image batch
+    grad = tape.gradient(disc_out, x)
+    grad_norm = tf.math.sqrt(tf.reduce_sum(tf.math.square(grad), (1,2,3)))
+    return tf.reduce_mean(tf.square(grad_norm - 1))
+        
+        
+        
+        
+        
+        
+        
