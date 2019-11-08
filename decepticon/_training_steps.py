@@ -182,7 +182,7 @@ def inpainter_training_step(inpaint_opt, disc_opt, inpt_img, mask, inpainter,
         else:
             gp = 0
         d_loss = tf.reduce_mean(least_squares_gan_loss(mask, sigmoid_out)) + \
-                        gradient_penalty_gp
+                        gradient_penalty
         
     # compute gradients and update
     inp_variables = inpainter.trainable_variables

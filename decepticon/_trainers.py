@@ -47,7 +47,7 @@ class Trainer(object):
                  reconstruction_weight=100, disc_weight=2, style_weight=0,
                  prior_weight=0, inpainter_tv_weight=0, maskgen_tv_weight=0,
                  maskdisc_gradient_weight=0, disc_gradient_weight=0,
-                 eval_pos=None, logdir=None, clip=10,
+                 eval_pos=None, logdir=None, 
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
                  downsample=2, step=0, inpaint=True, random_buffer=False):
@@ -89,7 +89,6 @@ class Trainer(object):
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.step = step
         self._batch_size = batch_size
-        self._clip = clip
         self._inpaint = inpaint
         self._random_buffer = random_buffer
 
@@ -154,7 +153,7 @@ class Trainer(object):
                         lr, decay_steps=lr_decay,
                         decay_rate=0.5,
                         staircase=False)
-            self._optimizers[x] = tf.keras.optimizers.Adam(learnrate, clipnorm=clip) 
+            self._optimizers[x] = tf.keras.optimizers.Adam(learnrate) 
             
         self._lr = lr
         self._lr_decay = lr_decay
@@ -517,7 +516,6 @@ class Trainer(object):
                 "maskdisc_gradient_weight":self.weights["maskdisc_gradient_weight"],
                 "inpainter_tv_weight":self.weights["inpaint_tv"],
                 "maskgen_tv_weight":self.weights["maskgen_tv"],
-                "clip":self._clip,
                 "imshape":self._imshape,
                 "train_maskgen_on_all":self._train_maskgen_on_all,
                 "lr":self._lr,
