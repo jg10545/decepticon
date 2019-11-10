@@ -64,7 +64,10 @@ def test_InpainterUpsampler_output_shape():
     
 def test_build_inpainter_output_shape():
     inpainter = build_inpainter()
-    assert inpainter.input.get_shape().as_list() == inpainter.output.get_shape().as_list()
+    inshape = inpainter.input.get_shape().as_list()
+    outshape = inshape
+    outshape[-1] = 3
+    assert inpainter.output.get_shape().as_list() == outshape
     
    
 def test_build_classifier_input_output_shapes():

@@ -28,7 +28,8 @@ inpaint_lossnames = ["inpainter_reconstruction_L1_loss",
                      "inpainter_style_loss",
                      "inpainter_tv_loss",
                      "inpainter_total_loss",
-                     "discriminator_GAN_loss"]
+                     "discriminator_GAN_loss",
+                     "discriminator_gradient_penalty"]
 
 
 class Trainer(object):
@@ -45,7 +46,8 @@ class Trainer(object):
                  class_loss_weight=1, exponential_loss_weight=0.1,
                  reconstruction_weight=100, disc_weight=2, style_weight=0,
                  prior_weight=0, inpainter_tv_weight=0, maskgen_tv_weight=0,
-                 eval_pos=None, logdir=None, clip=10,
+                 maskdisc_gradient_weight=0, disc_gradient_weight=0,
+                 eval_pos=None, logdir=None, 
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
                  downsample=2, step=0, inpaint=True, random_buffer=False):
@@ -68,6 +70,8 @@ class Trainer(object):
         :prior_weight: weight for mask discriminator loss
         :inpainter_tv_weight: weight for total variation loss for inpainter
         :maskgen_tv_weight: weight for total variation loss for mask generator
+        :maskdisc_gradient_weight:
+        :disc_gradient_weight:
         :eval_pos: batch of positive images for evaluation
         :logdir: where to save tensorboard logs
         :clip: gradient clipping
@@ -85,7 +89,6 @@ class Trainer(object):
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.step = step
         self._batch_size = batch_size
-        self._clip = clip
         self._inpaint = inpaint
         self._random_buffer = random_buffer
 
@@ -97,7 +100,9 @@ class Trainer(object):
                         "style":style_weight,
                         "prior":prior_weight,
                         "inpaint_tv":inpainter_tv_weight,
-                        "maskgen_tv":maskgen_tv_weight}
+                        "maskgen_tv":maskgen_tv_weight,
+                        "disc_gradient_weight":disc_gradient_weight,
+                        "maskdisc_gradient_weight":maskdisc_gradient_weight}
         
         
         # ------ BUILD SUMMARY WRITER ------
@@ -148,7 +153,7 @@ class Trainer(object):
                         lr, decay_steps=lr_decay,
                         decay_rate=0.5,
                         staircase=False)
-            self._optimizers[x] = tf.keras.optimizers.Adam(learnrate, clipnorm=clip) 
+            self._optimizers[x] = tf.keras.optimizers.Adam(learnrate) 
             
         self._lr = lr
         self._lr_decay = lr_decay
@@ -268,13 +273,14 @@ class Trainer(object):
     def _run_mask_discriminator_training_step(self, mask, prior_sample):
         # wrapper for mask_discriminator_training_step
         if (self.weights["prior"] > 0)&(self.maskdisc is not None):
-            loss = mask_discriminator_training_step(
+            loss, gp = mask_discriminator_training_step(
                     self.maskdisc, mask, 
                     prior_sample, 
-                    self._optimizers["maskdisc"])
+                    self._optimizers["maskdisc"],
+                    gradient_penalty=self.weights["maskdisc_gradient_weight"])
+            return loss, gp
         else:
-            loss = 0
-        return loss
+            return 0, 0
     
     def _run_inpainter_training_step(self, x, mask):
         # wrapper for inpainter_training_step
@@ -287,7 +293,8 @@ class Trainer(object):
                 disc_weight=self.weights["disc"],
                 style_weight=self.weights["style"], 
                 tv_weight=self.weights["inpaint_tv"],
-                style_model=self._style_model)
+                style_model=self._style_model,
+                gradient_penalty=self.weights["disc_gradient_weight"])
         inpainter_losses = dict(zip(inpaint_lossnames, inpainter_losses))
         return inpainter_losses
     
@@ -340,8 +347,9 @@ class Trainer(object):
                 # record the mean pixelwise mask variance
                 self._record_losses(mask_variance=pixelwise_variance(mask))
                 # run the mask discriminator step (if there is one)
-                mdl = self._run_mask_discriminator_training_step(mask, prior_sample)
+                mdl, gp = self._run_mask_discriminator_training_step(mask, prior_sample)
                 maskgen_losses["mask_discriminator_loss"] = mdl
+                maskgen_losses["mask_discriminator_gradient_penalty"] = gp
                     
                 # record losses to tensorboard
                 self._record_losses(**maskgen_losses)
@@ -504,9 +512,10 @@ class Trainer(object):
                 "disc_weight":self.weights["disc"],
                 "style_weight":self.weights["style"],
                 "prior_weight":self.weights["prior"],
+                "disc_gradient_weight":self.weights["disc_gradient_weight"],
+                "maskdisc_gradient_weight":self.weights["maskdisc_gradient_weight"],
                 "inpainter_tv_weight":self.weights["inpaint_tv"],
                 "maskgen_tv_weight":self.weights["maskgen_tv"],
-                "clip":self._clip,
                 "imshape":self._imshape,
                 "train_maskgen_on_all":self._train_maskgen_on_all,
                 "lr":self._lr,
