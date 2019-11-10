@@ -59,6 +59,25 @@ disc_loss = """
 
 Weighted sum of pixel-wise crossentropy loss from the discriminator
 """
+
+discriminator_gradient_penalty = """
+# Discriminator gradient penalty
+
+Gradient penalty for discriminator, as described in *Improved Training of
+Wasserstein GANs* by Gulrajani *et al*.
+
+Disabled if `disc_gradient_weight=0`.
+"""
+
+mask_discriminator_gradient_penalty = """
+# Discriminator gradient penalty
+
+Gradient penalty for mask discriminator, as described in *Improved Training of
+Wasserstein GANs* by Gulrajani *et al*.
+
+Disabled if `maskdisc_gradient_weight=0`.
+"""
+
 style_loss = """
 # Style loss for inpainter
 
@@ -123,3 +142,5 @@ loss_descriptions["mask_discriminator_loss"] = maskdisc_loss
 loss_descriptions["mask_variance"] = mask_variance
 loss_descriptions["mask_generator_tv_loss"] = maskgen_tv_loss
 loss_descriptions["inpainter_tv_loss"] = inpainter_tv_loss
+loss_descriptions["discriminator_gradient_penalty"] = discriminator_gradient_penalty
+loss_descriptions["mask_discriminator_gradient_penalty"] = mask_discriminator_gradient_penalty
