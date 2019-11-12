@@ -193,7 +193,11 @@ class Trainer(object):
         if train_on_all:
             files = self._posfiles + self._negfiles
         else:
-            files = self._posfiles
+            files = [x for x in self._posfiles]
+        # Make sure last batch is a full batch to line up
+        # with masks
+        while len(files)%self._batch_size != 0:
+            files.append(np.random.choice(files))
         # shuffle so pos and neg patches won't be separated (if the
         # dataset is larger than the shuffle queue)
         np.random.shuffle(files)
