@@ -8,7 +8,8 @@ from decepticon._losses import total_variation_loss, compute_gradient_penalty
 @tf.function
 def maskgen_training_step(opt, inpt_img, maskgen, classifier, 
                           inpainter, maskdisc=None, cls_weight=1, exp_weight=0.1,
-                          prior_weight=0.25, tv_weight=0, inpaint=True):
+                          prior_weight=0.25, tv_weight=0, inpaint=True,
+                          class_prob_loss=False):
     """
     TensorFlow function to perform one training step on the mask generator.
     
@@ -26,6 +27,8 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     :tv_weight: weight total variation loss (not in paper)
     :inpaint: if True, fill in the mask using the inpainter before computing
         classification loss (the way they did it in the paper)
+    :class_prob_loss: use the probability rather than crossentropy for
+        classification loss
     
     Returns
     :cls_loss: classification loss for the batch
@@ -55,7 +58,11 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
             
     
         # compute losses
-        cls_loss = tf.reduce_mean(-1*tf.math.log(softmax_out[:,0] + K.epsilon()))
+        if class_prob_loss:
+            cls_loss = tf.reduce_mean(1-softmax_out[:,0])
+        else:
+            cls_loss = tf.reduce_mean(-1*tf.math.log(softmax_out[:,0] + K.epsilon()))
+            
         exp_loss = tf.reduce_mean(
                             tf.exp(tf.reduce_mean(mask, axis=[1,2,3])))
         if (prior_weight > 0) & (maskdisc is not None):
