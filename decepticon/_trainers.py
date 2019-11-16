@@ -177,7 +177,7 @@ class Trainer(object):
         # how many positive images do we have?
         N = len(self._posfiles)
         bs = self._batch_size
-        delta = min(int(np.floor(N/bs)),1)
+        delta = max(int(np.floor(N/bs)),1)
         files = self._posfiles[::delta][:bs]
         ds = image_loader_dataset(files, 
                                   batch_size=bs,
