@@ -30,26 +30,29 @@ def _remove_objects(img, maskgen, inpainter, return_all=False):
     :img: PIL Image object or path to image
     :maskgen: Keras model for mask generator
     :inpainter: Keras model for inpainter
-    :return_all: if True, return the mask, inpainted image, and
-        reconstructed image
+    :return_all: if True, return the original image, mask, inpainted image, 
+        and reconstructed image
     """
     if isinstance(img, str):
         img = Image.open(img)
             
-    # now some funky stuff- 
+    # now some funky stuff- expand image to make sure the inverse convolutions
+    # in the inpainter produce an output of the same size. we'll crop back
+    # at the end
     W, H = img.size
     Wnew, Hnew = img.size
-
     if Wnew%8 != 0: Wnew = 8*(Wnew//8 + 1)
     if Hnew%8 != 0: Hnew = 8*(Hnew//8 + 1)
     img_arr = np.expand_dims(
         np.array(img.crop([0, 0, Wnew, Hnew])), 0).astype(np.float32)/255
-        
+    # compute the mask
     mask = maskgen.predict(img_arr)
     masked_img = np.concatenate([
                 img_arr*(1-mask),
                 mask], -1)
+    # compute the inpainted image
     inpainted = inpainter.predict(masked_img)
+    # combine it all
     reconstructed = img_arr*(1-mask) + inpainted*mask
         
     recon_img =  Image.fromarray((255*reconstructed[0]).astype(np.uint8))

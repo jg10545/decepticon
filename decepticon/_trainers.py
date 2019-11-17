@@ -1,7 +1,6 @@
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
-from PIL import Image
 import os
 import yaml
 
@@ -52,7 +51,7 @@ class Trainer(object):
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
                  downsample=2, step=0, inpaint=True, random_buffer=False,
-                 class_prob_min=1e-2):
+                 class_prob_min=1e-3):
         """
         :posfiles: list of paths to positive image patches
         :negfiles: list of paths to negative image patches
@@ -72,11 +71,10 @@ class Trainer(object):
         :prior_weight: weight for mask discriminator loss
         :inpainter_tv_weight: weight for total variation loss for inpainter
         :maskgen_tv_weight: weight for total variation loss for mask generator
-        :maskdisc_gradient_weight:
-        :disc_gradient_weight:
+        :maskdisc_gradient_weight: weight for gradient penalty for mask discriminator
+        :disc_gradient_weight: weight for gradient penalty for inpainter discriminator
         :eval_pos: batch of positive images for evaluation
         :logdir: where to save tensorboard logs
-        :clip: gradient clipping
         :train_maskgen_on_all: whether to train the mask generator using negative
                 image patches as well as positive
         :num_parallel_calls: number of threads to use for data loaders
@@ -87,7 +85,9 @@ class Trainer(object):
         :inpaint: if True, fill in the mask using the inpainter during the mask
                 generator training step (like they did in the paper)
         :random_buffer: use mask prior instead of actual masks for training inpainter
-        :class_prob_min:
+        :class_prob_min: EXPERIMENTAL: added to classifier output when computing               
+                classification loss; use to suppress false positive masks in
+                high class-imbalance cases
         """
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.step = step
@@ -252,6 +252,10 @@ class Trainer(object):
         self.inpainter.fit(ds, steps_per_epoch=steps_per_epoch, epochs=epochs)
                 
     def _assemble_full_model(self):
+        """
+        Macro to put inpainter and mask generator together into a single
+        FCN Keras model
+        """
         inpt = tf.keras.layers.Input((None, None, 3))
         mask = self.maskgen(inpt)
         inverse_mask = tf.keras.layers.Lambda(lambda x: 1-x)(mask)
@@ -311,7 +315,7 @@ class Trainer(object):
     
     def _build_mask_buffer(self, maxsize=10000):
         """
-        
+        Build a mask buffer to sample from during inpainter training.
         """
         mask_buffer = []
         if self._random_buffer:
