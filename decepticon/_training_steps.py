@@ -8,7 +8,8 @@ from decepticon._losses import total_variation_loss, compute_gradient_penalty
 @tf.function
 def maskgen_training_step(opt, inpt_img, maskgen, classifier, 
                           inpainter, maskdisc=None, cls_weight=1, exp_weight=0.1,
-                          prior_weight=0.25, tv_weight=0, inpaint=True):
+                          prior_weight=0.25, tv_weight=0, inpaint=True,
+                          class_prob_min=1e-2):
     """
     TensorFlow function to perform one training step on the mask generator.
     
@@ -26,6 +27,8 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     :tv_weight: weight total variation loss (not in paper)
     :inpaint: if True, fill in the mask using the inpainter before computing
         classification loss (the way they did it in the paper)
+    :class_prob_min: offset the class probability by this amount when computing
+        classification loss
     
     Returns
     :cls_loss: classification loss for the batch
@@ -35,6 +38,7 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
     :loss: total weighted loss for the batch
     :mask: batch masks (for use in mask buffer)
     """
+    print("tracing maskgen_training_step")
     input_shape = inpt_img.get_shape()
     tv_norm = input_shape[1]*input_shape[2]
     
@@ -55,7 +59,8 @@ def maskgen_training_step(opt, inpt_img, maskgen, classifier,
             
     
         # compute losses
-        cls_loss = tf.reduce_mean(-1*tf.math.log(softmax_out[:,0] + K.epsilon()))
+        cls_loss = tf.reduce_mean(-1*tf.math.log(softmax_out[:,0] + class_prob_min))
+            
         exp_loss = tf.reduce_mean(
                             tf.exp(tf.reduce_mean(mask, axis=[1,2,3])))
         if (prior_weight > 0) & (maskdisc is not None):
@@ -90,6 +95,7 @@ def mask_discriminator_training_step(maskdisc, mask, prior_sample, opt, gradient
     :opt: keras optimizer
     :gradient_penalty: weight for wasserstein-GAN gradient penalty
     """
+    print("tracing mask_discriminator_training_step")
     with tf.GradientTape() as tape:
         # compute losses with respect to actual masks and samples
         # from the mask prior
@@ -142,6 +148,7 @@ def inpainter_training_step(inpaint_opt, disc_opt, inpt_img, mask, inpainter,
     :loss: total weighted loss for the batch
     :d_loss: discriminator loss
     """
+    print("tracing inpainter_training_step")
     input_shape = inpt_img.get_shape()
     tv_norm = input_shape[1]*input_shape[2]*input_shape[3]
     

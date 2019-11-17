@@ -50,7 +50,8 @@ class Trainer(object):
                  eval_pos=None, logdir=None, 
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
-                 downsample=2, step=0, inpaint=True, random_buffer=False):
+                 downsample=2, step=0, inpaint=True, random_buffer=False,
+                 class_prob_min=1e-2):
         """
         :posfiles: list of paths to positive image patches
         :negfiles: list of paths to negative image patches
@@ -85,12 +86,14 @@ class Trainer(object):
         :inpaint: if True, fill in the mask using the inpainter during the mask
                 generator training step (like they did in the paper)
         :random_buffer: use mask prior instead of actual masks for training inpainter
+        :class_prob_min:
         """
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.step = step
         self._batch_size = batch_size
         self._inpaint = inpaint
         self._random_buffer = random_buffer
+        self._class_prob_min = class_prob_min
 
         # ------ RECORD LOSS FUNCTION WEIGHTS ------
         self.weights = {"class":class_loss_weight,
@@ -174,7 +177,7 @@ class Trainer(object):
         # how many positive images do we have?
         N = len(self._posfiles)
         bs = self._batch_size
-        delta = min(int(np.floor(N/bs)),1)
+        delta = max(int(np.floor(N/bs)),1)
         files = self._posfiles[::delta][:bs]
         ds = image_loader_dataset(files, 
                                   batch_size=bs,
@@ -270,7 +273,8 @@ class Trainer(object):
                 exp_weight=self.weights["exp"],
                 prior_weight=self.weights["prior"],
                 tv_weight=self.weights["maskgen_tv"],
-                inpaint=self._inpaint)
+                inpaint=self._inpaint,
+                class_prob_min=self._class_prob_min)
         maskgen_losses = dict(zip(maskgen_lossnames, maskgen_losses))
         return maskgen_losses, mask
 
@@ -526,7 +530,8 @@ class Trainer(object):
                 "lr_decay":self._lr_decay,
                 "num_parallel_calls":self._num_parallel_calls,
                 "inpaint":self._inpaint,
-                "random_buffer":self._random_buffer
+                "random_buffer":self._random_buffer,
+                "class_prob_min":self._class_prob_min
                 }
         config_path = os.path.join(self.logdir, "config.yml")
         yaml.dump(config, open(config_path, "w"), default_flow_style=False)
