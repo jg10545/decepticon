@@ -11,6 +11,6 @@ from decepticon._models import build_inpainter, build_classifier
 from decepticon._models import build_mask_generator 
 from decepticon._models import build_discriminator, build_mask_discriminator
 from decepticon._synthetic import build_synthetic_dataset, build_inpainter_dataset
-from decepticon._trainers import Trainer
-from decepticon._util import load_trainer_from_saved
+from decepticon._trainers import Trainer, load_trainer_from_saved
+from decepticon._objectremover import ObjectRemover
 import decepticon.loaders
