@@ -1,48 +1,11 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-import tensorflow as tf
-import yaml
-import os
+#import tensorflow as tf
+#import yaml
+#import os
 from PIL import Image
 
-from decepticon._trainers import Trainer
-
-
-def load_trainer_from_saved(posfiles, negfiles, old_dir, new_dir, 
-                           **kwargs):
-    """
-    Build a Trainer object using the log directory from a previous
-    Trainer. Useful for transfer learning experiments.
-    
-    :posfiles: list of paths to positive files
-    :negfiles: list of paths to negative files
-    :old_dir: directory to load from
-    :new_dir: directory to save to
-    :kwargs: pass any keyword arguments to override values
-        in the original directory
-    """
-    # load config.yml find
-    config = yaml.load(open(os.path.join(old_dir, "config.yml")),
-                  Loader=yaml.FullLoader)
-    # load saved models
-    saved_models = {
-        "mask_generator":"mask_generator.h5",
-        "inpainter":"inpainter.h5",
-        "discriminator":"discriminator.h5",
-        "classifier":"classifier.h5",
-        "maskdisc":"mask_discriminator.h5"
-    }
-    files_in_dir = list(os.listdir(old_dir))
-    for m in saved_models:
-        if saved_models[m] in files_in_dir:
-            config[m] = tf.keras.models.load_model(
-                        os.path.join(old_dir, saved_models[m]))
-            
-    for k in kwargs:
-        config[k] = kwargs[k]
-        
-    return Trainer(posfiles, negfiles, 
-                   logdir=new_dir, **config)
+#from decepticon._trainers import Trainer
 
 
 def _load_to_array(img):
@@ -57,4 +20,46 @@ def _load_to_array(img):
     if img.dtype == np.uint8:
         img = img.astype(np.float32)/255
     return img
+    
+
+def _remove_objects(img, maskgen, inpainter, return_all=False):
+    """
+    Run the object removal model on an image, returning results
+    as a PIL Image.
+    
+    :img: PIL Image object or path to image
+    :maskgen: Keras model for mask generator
+    :inpainter: Keras model for inpainter
+    :return_all: if True, return the original image, mask, inpainted image, 
+        and reconstructed image
+    """
+    if isinstance(img, str):
+        img = Image.open(img)
+            
+    # now some funky stuff- expand image to make sure the inverse convolutions
+    # in the inpainter produce an output of the same size. we'll crop back
+    # at the end
+    W, H = img.size
+    Wnew, Hnew = img.size
+    if Wnew%8 != 0: Wnew = 8*(Wnew//8 + 1)
+    if Hnew%8 != 0: Hnew = 8*(Hnew//8 + 1)
+    img_arr = np.expand_dims(
+        np.array(img.crop([0, 0, Wnew, Hnew])), 0).astype(np.float32)/255
+    # compute the mask
+    mask = maskgen.predict(img_arr)
+    masked_img = np.concatenate([
+                img_arr*(1-mask),
+                mask], -1)
+    # compute the inpainted image
+    inpainted = inpainter.predict(masked_img)
+    # combine it all
+    reconstructed = img_arr*(1-mask) + inpainted*mask
+        
+    recon_img =  Image.fromarray((255*reconstructed[0]).astype(np.uint8))
+    recon_img = recon_img.crop([0, 0, W, H])
+    
+    if return_all:
+        return img, mask[0], inpainted[0], recon_img
+    else:
+        return recon_img
     

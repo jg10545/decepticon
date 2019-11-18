@@ -1,7 +1,6 @@
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
-from PIL import Image
 import os
 import yaml
 
@@ -16,6 +15,7 @@ from decepticon._descriptions import loss_descriptions
 from decepticon import _descriptions
 
 from decepticon._training_steps import maskgen_training_step, mask_discriminator_training_step, inpainter_training_step
+from decepticon._util import _remove_objects
 
 maskgen_lossnames = ["mask_generator_classifier_loss",
                      "mask_generator_exponential_loss",
@@ -51,7 +51,7 @@ class Trainer(object):
                  train_maskgen_on_all=False,
                  num_parallel_calls=4, imshape=(80,80),
                  downsample=2, step=0, inpaint=True, random_buffer=False,
-                 class_prob_min=1e-2):
+                 class_prob_min=1e-3):
         """
         :posfiles: list of paths to positive image patches
         :negfiles: list of paths to negative image patches
@@ -71,11 +71,10 @@ class Trainer(object):
         :prior_weight: weight for mask discriminator loss
         :inpainter_tv_weight: weight for total variation loss for inpainter
         :maskgen_tv_weight: weight for total variation loss for mask generator
-        :maskdisc_gradient_weight:
-        :disc_gradient_weight:
+        :maskdisc_gradient_weight: weight for gradient penalty for mask discriminator
+        :disc_gradient_weight: weight for gradient penalty for inpainter discriminator
         :eval_pos: batch of positive images for evaluation
         :logdir: where to save tensorboard logs
-        :clip: gradient clipping
         :train_maskgen_on_all: whether to train the mask generator using negative
                 image patches as well as positive
         :num_parallel_calls: number of threads to use for data loaders
@@ -86,7 +85,9 @@ class Trainer(object):
         :inpaint: if True, fill in the mask using the inpainter during the mask
                 generator training step (like they did in the paper)
         :random_buffer: use mask prior instead of actual masks for training inpainter
-        :class_prob_min:
+        :class_prob_min: EXPERIMENTAL: added to classifier output when computing               
+                classification loss; use to suppress false positive masks in
+                high class-imbalance cases
         """
         assert tf.executing_eagerly(), "eager execution must be enabled first"
         self.step = step
@@ -251,6 +252,10 @@ class Trainer(object):
         self.inpainter.fit(ds, steps_per_epoch=steps_per_epoch, epochs=epochs)
                 
     def _assemble_full_model(self):
+        """
+        Macro to put inpainter and mask generator together into a single
+        FCN Keras model
+        """
         inpt = tf.keras.layers.Input((None, None, 3))
         mask = self.maskgen(inpt)
         inverse_mask = tf.keras.layers.Lambda(lambda x: 1-x)(mask)
@@ -310,7 +315,7 @@ class Trainer(object):
     
     def _build_mask_buffer(self, maxsize=10000):
         """
-        
+        Build a mask buffer to sample from during inpainter training.
         """
         mask_buffer = []
         if self._random_buffer:
@@ -535,38 +540,50 @@ class Trainer(object):
                 }
         config_path = os.path.join(self.logdir, "config.yml")
         yaml.dump(config, open(config_path, "w"), default_flow_style=False)
+ 
    
-   
-    def remove_objects(self, img):
-        """
-        Pass a path to an image or a PIL Image object and run the 
-        full model.
-        
-        Results returned as PIL Image.
-        """
-        if isinstance(img, str):
-            img = Image.open(img)
-            
-        # 
-        W, H = img.size
-        Wnew, Hnew = img.size
-
-        if Wnew%8 != 0: Wnew = 8*(Wnew//8 + 1)
-        if Hnew%8 != 0: Hnew = 8*(Hnew//8 + 1)
-        img_arr = np.expand_dims(
-            np.array(img.crop([0, 0, Wnew, Hnew])), 0).astype(np.float32)/255
-        
-        mask = self.maskgen.predict(img_arr)
-        masked_img = np.concatenate([
-                img_arr*(1-mask),
-                mask], -1)
-        inpainted = self.inpainter.predict(masked_img)
-        reconstructed = img_arr*(1-mask) + inpainted*mask
-        
-        recon_img =  Image.fromarray((255*reconstructed[0]).astype(np.uint8))
-        return recon_img.crop([0, 0, W, H])
-    
     def __call__(self, img):
-        self.remove_objects.__doc__
-        return self.remove_objects(img)
+        """
+        Input a path to an image or a PIL Image object, and return
+        an Image object with the object removal model applied
+        """
+        return _remove_objects(img, self.maskgen, self.inpainter, False)
 
+
+
+
+def load_trainer_from_saved(posfiles, negfiles, old_dir, new_dir, 
+                           **kwargs):
+    """
+    Build a Trainer object using the log directory from a previous
+    Trainer. Useful for transfer learning experiments.
+    
+    :posfiles: list of paths to positive files
+    :negfiles: list of paths to negative files
+    :old_dir: directory to load from
+    :new_dir: directory to save to
+    :kwargs: pass any keyword arguments to override values
+        in the original directory
+    """
+    # load config.yml find
+    config = yaml.load(open(os.path.join(old_dir, "config.yml")),
+                  Loader=yaml.FullLoader)
+    # load saved models
+    saved_models = {
+        "mask_generator":"mask_generator.h5",
+        "inpainter":"inpainter.h5",
+        "discriminator":"discriminator.h5",
+        "classifier":"classifier.h5",
+        "maskdisc":"mask_discriminator.h5"
+    }
+    files_in_dir = list(os.listdir(old_dir))
+    for m in saved_models:
+        if saved_models[m] in files_in_dir:
+            config[m] = tf.keras.models.load_model(
+                        os.path.join(old_dir, saved_models[m]))
+            
+    for k in kwargs:
+        config[k] = kwargs[k]
+        
+    return Trainer(posfiles, negfiles, 
+                   logdir=new_dir, **config)
